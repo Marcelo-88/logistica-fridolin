@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import unicodedata
 import urllib.parse
-import google.generativeai as genai
+from google import genai
 
 # ==========================================
 # 1. CONFIGURACIÓN Y PALETA DE COLOR FRIDOLIN
@@ -820,17 +820,17 @@ if datos_cargados:
         st.caption("Aprovecha la Inteligencia Artificial para analizar rutas, optimizar la secuencia de entrega y resolver dudas de operación.")
         st.divider()
 
-        # Gestión de clave API Gemini
+        # Obtención de la clave API (se evalúa primero en Secrets, luego en campo manual)
         api_key = st.secrets.get("GEMINI_API_KEY", "")
         if not api_key:
-            api_key = st.text_input("🔑 Ingrese su API Key de Google Gemini para activar las funciones de IA:", type="password")
+            api_key = st.text_input("🔑 Ingrese su API Key completa de Google Gemini (AIzaSy...):", type="password")
 
         if not api_key:
-            st.warning("⚠️ Se requiere una API Key de Google Gemini válida para usar este módulo. Puedes configurarla en `.streamlit/secrets.toml` con el nombre `GEMINI_API_KEY` o ingresarla arriba.")
+            st.warning("⚠️ Se requiere una API Key de Google Gemini válida para activar este módulo. Ingrésea arriba o configúrala en `.streamlit/secrets.toml` con la clave GEMINI_API_KEY.")
         else:
             try:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # Inicialización con el nuevo SDK oficial `google-genai`
+                client = genai.Client(api_key=api_key)
 
                 tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
 
@@ -866,7 +866,10 @@ if datos_cargados:
                                 3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
                                 Responde en un tono profesional, claro y directo, usando viñetas.
                                 """
-                                response = model.generate_content(prompt_opt)
+                                response = client.models.generate_content(
+                                    model='gemini-2.5-flash',
+                                    contents=prompt_opt,
+                                )
                                 st.markdown("---")
                                 st.markdown("### 📋 Recomendación Generada:")
                                 st.markdown(response.text)
@@ -896,7 +899,10 @@ if datos_cargados:
 
                                 Responde basándote estrictamente en los datos provistos arriba.
                                 """
-                                response_chat = model.generate_content(prompt_chat)
+                                response_chat = client.models.generate_content(
+                                    model='gemini-2.5-flash',
+                                    contents=prompt_chat,
+                                )
                                 st.markdown("---")
                                 st.markdown("### 🤖 Respuesta del Asistente:")
                                 st.markdown(response_chat.text)
