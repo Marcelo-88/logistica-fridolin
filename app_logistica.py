@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 
 # ==========================================
-# 1. CONFIGURACIÓN Y ESTILOS
+# 1. CONFIGURACIÓN Y ESTILOS AVANZADOS
 # ==========================================
 st.set_page_config(
     page_title="Control Logístico | Fridolin",
@@ -11,12 +12,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS limpios
+# Estilos CSS personalizados
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     
-    /* Contenedor de Tarjeta */
+    /* Contenedor de Tarjeta Estándar */
     .route-card {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -24,6 +25,16 @@ st.markdown("""
         padding: 18px;
         margin-bottom: 16px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    }
+
+    /* Contenedor de Tarjeta Madrugada (Antes de 7:00 AM) */
+    .route-card-madrugada {
+        background-color: #faf5ff;
+        border: 1.5px solid #c084fc;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 3px 8px rgba(192, 132, 252, 0.15);
     }
     
     /* Badges */
@@ -51,6 +62,8 @@ st.markdown("""
         font-weight: 600;
         font-size: 0.85rem;
     }
+    
+    /* Badge Horario Normal */
     .badge-time {
         background-color: #e0f2fe;
         color: #0369a1;
@@ -62,11 +75,25 @@ st.markdown("""
         margin-top: 8px;
         margin-bottom: 8px;
     }
+
+    /* Badge Horario Madrugada (< 07:00 AM) */
+    .badge-time-madrugada {
+        background-color: #f3e8ff;
+        color: #6b21a8;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        display: inline-block;
+        margin-top: 8px;
+        margin-bottom: 8px;
+        border: 1px solid #d8b4fe;
+    }
     
     /* Paradas */
     .stop-chip {
         display: inline-block;
-        background-color: #f8fafc;
+        background-color: #ffffff;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 6px 12px;
@@ -81,6 +108,19 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# Función auxiliar para saber si una hora es antes de las 07:00 AM
+def es_salida_madrugada(hora_str):
+    if not hora_str or hora_str == "Sin especificar":
+        return False
+    try:
+        # Intentar parsear formatos habituales (ej: 04:00, 4:00, 22:00)
+        hora_clean = hora_str.strip()
+        partes = hora_clean.split(":")
+        hora_num = int(partes[0])
+        return hora_num < 7
+    except Exception:
+        return False
 
 # ==========================================
 # 2. CARGA DE DATOS
@@ -216,7 +256,7 @@ if datos_cargados:
 if datos_cargados:
 
     # ----------------------------------------------------
-    # VISTA 1: TARJETAS DE RUTA + HORARIO ESTIMADO
+    # VISTA 1: TARJETAS DE RUTA + DISTINCIÓN DE MADRUGADA
     # ----------------------------------------------------
     if menu_opcion == "🎴 1. Tarjetas de Ruta y Horarios":
         st.title("🚚 Planificación de Rutas y Horarios Estimados")
@@ -253,23 +293,30 @@ if datos_cargados:
                     hora_salida = match.iloc[0]['Ingreso']
                     hora_retorno = match.iloc[0]['Salida']
 
+            # Determinar si es salida de madrugada (Antes de las 7:00 AM)
+            es_madrugada = es_salida_madrugada(hora_salida)
+
+            # Selección de estilos según el horario
+            card_class = "route-card-madrugada" if es_madrugada else "route-card"
+            badge_time_class = "badge-time-madrugada" if es_madrugada else "badge-time"
+            icono_salida = "🌙 Madrugada Planta" if es_madrugada else "🚀 Salida Planta"
+
             # Extraer sucursales válidas
             paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
 
-            # Construcción de las paradas HTML sin saltos raros
+            # Construcción de las paradas HTML
             html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
 
-            # Renderizado seguro de Tarjeta en HTML plano continuo
             badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov else ''
             nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#d97706; background-color:#fffbeb; padding:6px 10px; border-radius:6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario else ''
 
             card_html = (
-                f'<div class="route-card">'
+                f'<div class="{card_class}">'
                 f'<div style="display:flex; justify-content:space-between; align-items:center;">'
                 f'<div><span class="badge-day">📅 {dia}</span> <span class="badge-cat">📦 {cat}</span> {badge_mov_html}</div>'
                 f'<small style="color:#64748b; font-weight:500;">{frec}</small>'
                 f'</div>'
-                f'<div><span class="badge-time">🚀 Salida Planta: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
+                f'<div><span class="{badge_time_class}">{icono_salida}: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
                 f'<div style="margin-top:8px;"><strong style="color:#475569; font-size:0.9rem;">Secuencia de Recorrido:</strong><br>{html_paradas}</div>'
                 f'{nota_html}'
                 f'</div>'
@@ -297,10 +344,14 @@ if datos_cargados:
                     
                     with col_left:
                         for _, row in df_dia.iterrows():
+                            es_mad = es_salida_madrugada(row["Ingreso"])
+                            ico = "🌙 Madrugada" if es_mad else "🚀 Salida"
+                            col_txt = "#6b21a8" if es_mad else "#0284c7"
+                            
                             mov_item_html = (
                                 f'<div style="background-color:#ffffff; border:1px solid #e2e8f0; padding:12px 16px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">'
                                 f'<div><strong style="color:#1e293b; font-size:1.05rem;">🚛 {row["Movilidad"]}</strong><br>'
-                                f'<span style="color:#0284c7; font-size:0.95rem;">🚀 Salida: <b>{row["Ingreso"]}</b> &nbsp;|&nbsp; 🏁 Retorno: <b>{row["Salida"]}</b></span></div>'
+                                f'<span style="color:{col_txt}; font-size:0.95rem;">{ico}: <b>{row["Ingreso"]}</b> &nbsp;|&nbsp; 🏁 Retorno: <b>{row["Salida"]}</b></span></div>'
                                 f'<div style="background-color:#f1f5f9; padding:6px 12px; border-radius:8px; font-weight:700; color:#0f172a;">⏳ {row["Total Horas"]} hrs</div>'
                                 f'</div>'
                             )
