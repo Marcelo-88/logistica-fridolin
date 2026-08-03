@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
 # ==========================================
 # 1. CONFIGURACIÓN Y ESTILOS AVANZADOS
@@ -27,7 +26,7 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.03);
     }
 
-    /* Contenedor de Tarjeta Madrugada (Antes de 7:00 AM) */
+    /* Contenedor de Tarjeta Madrugada / Noche (< 7:00 AM o >= 22:00) */
     .route-card-madrugada {
         background-color: #faf5ff;
         border: 1.5px solid #c084fc;
@@ -76,7 +75,7 @@ st.markdown("""
         margin-bottom: 8px;
     }
 
-    /* Badge Horario Madrugada (< 07:00 AM) */
+    /* Badge Horario Madrugada / Nocturno */
     .badge-time-madrugada {
         background-color: #f3e8ff;
         color: #6b21a8;
@@ -109,15 +108,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Función auxiliar para determinar si una hora es antes de las 07:00 AM
+# Función para determinar si una hora pertenece al turno de Madrugada/Noche (< 07:00 AM o >= 22:00)
 def es_salida_madrugada(hora_str):
-    if not hora_str or hora_str == "Sin especificar":
+    if not hora_str or hora_str in ["Sin especificar", "nan", "None", ""]:
         return False
     try:
-        hora_clean = hora_str.strip()
+        hora_clean = str(hora_str).strip()
         partes = hora_clean.split(":")
         hora_num = int(partes[0])
-        return hora_num < 7
+        # Considera Madrugada si es antes de las 7:00 AM O a partir de las 22:00 (10 PM)
+        return hora_num < 7 or hora_num >= 22
     except Exception:
         return False
 
@@ -136,7 +136,8 @@ def cargar_datos_logistica():
     df_raw = pd.read_csv(URL_RUTAS, header=None)
     
     # --- RUTAS DE DISTRIBUCIÓN ---
-    df_rutas = df_raw.iloc[:, :15].copy()
+    # Tomamos desde Col A hasta Col M (0 a 13)
+    df_rutas = df_raw.iloc[:, :13].copy()
     df_rutas.columns = df_rutas.iloc[0]
     df_rutas = df_rutas[1:].reset_index(drop=True).dropna(how="all")
     
@@ -208,6 +209,8 @@ if datos_cargados:
     col_dia = next((c for c in df_rutas_raw.columns if 'Dí' in c or 'Di' in c or 'dí' in c), None)
     col_cat = next((c for c in df_rutas_raw.columns if 'Cat' in c or 'cat' in c), None)
     col_mov = next((c for c in df_rutas_raw.columns if 'Movilidad' in c), None)
+    col_h_salida = next((c for c in df_rutas_raw.columns if 'Hora_Sal' in c or 'Salida' in c or 'Hora_sal' in c), None)
+    col_h_retorno = next((c for c in df_rutas_raw.columns if 'Hora_Ret' in c or 'Retorno' in c or 'Hora_ret' in c), None)
 
     # 1. Filtro de Días
     if col_dia and col_dia in df_rutas_raw.columns:
@@ -233,31 +236,19 @@ if datos_cargados:
         if cats_seleccionadas:
             df_filtrado = df_filtrado[df_filtrado[col_cat].isin(cats_seleccionadas)]
 
-    # 3. FILTRO POR HORARIO DE SALIDA (NUEVO)
+    # 3. FILTRO POR HORARIO DE SALIDA (Aplica directamente a Columna K de Rutas)
     filtro_horario = st.sidebar.selectbox(
         "⏰ Horario de Salida:",
-        options=["Todas las rutas", "🌙 Madrugada (Antes de 07:00 AM)", "☀️ Mañana / Día (07:00 AM o más)"]
+        options=["Todas las rutas", "🌙 Madrugada / Noche (22:00 - 07:00 AM)", "☀️ Mañana / Día (07:00 AM - 21:59)"]
     )
 
-    # Lógica de cruce para filtrar por horario
-    def obtener_hora_ingreso(row):
-        dia = row.get(col_dia, '')
-        mov = str(row.get(col_mov, ''))
-        if mov and not df_movilidades_raw.empty:
-            match = df_movilidades_raw[(df_movilidades_raw['Día'] == dia) & (df_movilidades_raw['Num_Mov'] == mov)]
-            if not match.empty:
-                return match.iloc[0]['Ingreso']
-        return "Sin especificar"
-
-    if filtro_horario != "Todas las rutas":
-        # Filtrar df_filtrado (Rutas)
-        df_filtrado['temp_ingreso'] = df_filtrado.apply(obtener_hora_ingreso, axis=1)
-        if filtro_horario == "🌙 Madrugada (Antes de 07:00 AM)":
-            df_filtrado = df_filtrado[df_filtrado['temp_ingreso'].apply(es_salida_madrugada)]
+    if filtro_horario != "Todas las rutas" and col_h_salida:
+        if filtro_horario == "🌙 Madrugada / Noche (22:00 - 07:00 AM)":
+            df_filtrado = df_filtrado[df_filtrado[col_h_salida].apply(es_salida_madrugada)]
             if not df_mov_filtrado.empty:
                 df_mov_filtrado = df_mov_filtrado[df_mov_filtrado['Ingreso'].apply(es_salida_madrugada)]
         else:
-            df_filtrado = df_filtrado[~df_filtrado['temp_ingreso'].apply(es_salida_madrugada)]
+            df_filtrado = df_filtrado[~df_filtrado[col_h_salida].apply(es_salida_madrugada)]
             if not df_mov_filtrado.empty:
                 df_mov_filtrado = df_mov_filtrado[~df_mov_filtrado['Ingreso'].apply(es_salida_madrugada)]
 
@@ -284,11 +275,11 @@ if datos_cargados:
 if datos_cargados:
 
     # ----------------------------------------------------
-    # VISTA 1: TARJETAS DE RUTA + DISTINCIÓN DE MADRUGADA
+    # VISTA 1: TARJETAS DE RUTA (HORARIOS DE COLS K Y L)
     # ----------------------------------------------------
     if menu_opcion == "🎴 1. Tarjetas de Ruta y Horarios":
         st.title("🚚 Planificación de Rutas y Horarios Estimados")
-        st.caption("Secuencia visual de paradas junto con su hora de salida y retorno asignados.")
+        st.caption("Secuencia visual de paradas con hora de salida (Col. K) y retorno (Col. L) por viaje.")
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Rutas en Vista", f"{len(df_filtrado)}")
@@ -308,34 +299,34 @@ if datos_cargados:
             cat = row.get(col_cat, '')
             mov = row.get(col_mov, '')
             frec = row.get(col_frec, '')
-            comentario = row.get(col_com, '')
+            comentario = str(row.get(col_com, '')).strip()
 
-            # Cruce de hora de salida y retorno
-            hora_salida = "Sin especificar"
-            hora_retorno = "Sin especificar"
+            # Obtener directamente de la fila las horas de salida (Col. K) y retorno (Col. L)
+            hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
+            hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
 
-            if mov and not df_movilidades_raw.empty:
-                match = df_movilidades_raw[(df_movilidades_raw['Día'] == dia) & (df_movilidades_raw['Num_Mov'] == str(mov))]
-                if not match.empty:
-                    hora_salida = match.iloc[0]['Ingreso']
-                    hora_retorno = match.iloc[0]['Salida']
+            # Validar valores vacíos
+            if not hora_salida or hora_salida in ['nan', 'None']:
+                hora_salida = "Sin especificar"
+            if not hora_retorno or hora_retorno in ['nan', 'None']:
+                hora_retorno = "Sin especificar"
 
-            # Determinar si es salida de madrugada (Antes de las 7:00 AM)
+            # Determinar si es Madrugada/Noche (< 7:00 AM o >= 22:00)
             es_madrugada = es_salida_madrugada(hora_salida)
 
-            # Selección de estilos según el horario
+            # Estilos según el horario
             card_class = "route-card-madrugada" if es_madrugada else "route-card"
             badge_time_class = "badge-time-madrugada" if es_madrugada else "badge-time"
-            icono_salida = "🌙 Madrugada Planta" if es_madrugada else "🚀 Salida Planta"
+            icono_salida = "🌙 Salida Planta" if es_madrugada else "🚀 Salida Planta"
 
             # Extraer sucursales válidas
             paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
 
-            # Construcción de las paradas HTML
+            # Construcción HTML de las paradas
             html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
 
-            badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov else ''
-            nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#d97706; background-color:#fffbeb; padding:6px 10px; border-radius:6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario else ''
+            badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov and mov not in ['nan', 'None'] else ''
+            nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#d97706; background-color:#fffbeb; padding:6px 10px; border-radius:6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario and comentario not in ['nan', 'None'] else ''
 
             card_html = (
                 f'<div class="{card_class}">'
