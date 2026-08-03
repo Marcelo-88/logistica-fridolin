@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import urllib.parse
 
 # ==========================================
 # 1. CONFIGURACIÓN DE PÁGINA
@@ -22,29 +23,35 @@ st.markdown("""
 # ==========================================
 # 2. ENLACE DIRECTO A GOOGLE SHEETS
 # ==========================================
-# ID de tu hoja de Google Sheets
 SHEET_ID = "1vMrjVjM7575QlbgM19mpbQhrUxnC183hH3MDjC8AjfM"
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def cargar_datos_logistica():
-    # Cargar las pestañas directamente mediante URL CSV export
-    url_rutas = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Rutas_Logistica"
-    url_sucursales = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sucursales"
+    # Codificar nombres de pestañas para evitar errores de espacios/caracteres
+    sheet_rutas = urllib.parse.quote("Rutas_Logistica")
+    sheet_sucursales = urllib.parse.quote("Sucursales")
+    
+    url_rutas = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_rutas}"
+    url_sucursales = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_sucursales}"
     
     df_rutas = pd.read_csv(url_rutas)
     df_sucursales = pd.read_csv(url_sucursales)
 
-    # --- Limpieza de datos: Rutas ---
+    # Limpieza: Rutas
     df_rutas = df_rutas.dropna(how="all")
     for col in ['Día', 'Categoría', 'Sucursal_1', 'Sucursal_2', 'Sucursal_3', 'Sucursal 4', 'Movilidad']:
         if col in df_rutas.columns:
             df_rutas[col] = df_rutas[col].astype(str).str.strip()
     
-    df_rutas['KM_Recorridos'] = pd.to_numeric(df_rutas['KM_Recorridos'], errors='coerce').fillna(0)
+    if 'KM_Recorridos' in df_rutas.columns:
+        df_rutas['KM_Recorridos'] = pd.to_numeric(df_rutas['KM_Recorridos'], errors='coerce').fillna(0)
+    else:
+        df_rutas['KM_Recorridos'] = 0
     
-    # --- Limpieza de datos: Sucursales (GPS) ---
+    # Limpieza: Sucursales
     df_sucursales = df_sucursales.dropna(how="all")
-    df_sucursales['SUCURSAL'] = df_sucursales['SUCURSAL'].astype(str).str.replace('SUC.', '', regex=False).str.strip()
+    if 'SUCURSAL' in df_sucursales.columns:
+        df_sucursales['SUCURSAL'] = df_sucursales['SUCURSAL'].astype(str).str.replace('SUC.', '', regex=False).str.strip()
     
     if 'LATITUD Y LONGT' in df_sucursales.columns:
         coords = df_sucursales['LATITUD Y LONGT'].astype(str).str.split(',', expand=True)
@@ -54,12 +61,13 @@ def cargar_datos_logistica():
 
     return df_rutas, df_sucursales
 
-# Intentar cargar datos
+# Cargar datos
 try:
     df_rutas_raw, df_sucursales_raw = cargar_datos_logistica()
     datos_cargados = True
 except Exception as e:
     st.error(f"⚠️ Error al conectar con Google Sheets: {e}")
+    st.info("💡 Asegúrate de hacer 'Archivo ➔ Compartir ➔ Publicar en la web' en tu hoja de Google Sheets y que las pestañas se llamen 'Rutas_Logistica' y 'Sucursales'.")
     datos_cargados = False
 
 # ==========================================
@@ -84,24 +92,27 @@ if datos_cargados:
     st.sidebar.divider()
     st.sidebar.subheader("🎯 Filtros Rápidos")
 
-    # Filtros
-    dias_disponibles = ["Todos"] + sorted(list(df_rutas_raw['Día'].dropna().unique()))
+    # Filtros dinámicos
+    col_dia = 'Día' if 'Día' in df_rutas_raw.columns else df_rutas_raw.columns[0]
+    dias_disponibles = ["Todos"] + sorted(list(df_rutas_raw[col_dia].dropna().unique()))
     filtro_dia = st.sidebar.selectbox("Filtrar por Día:", dias_disponibles)
 
-    cats_disponibles = ["Todas"] + sorted(list(df_rutas_raw['Categoría'].dropna().unique()))
+    col_cat = 'Categoría' if 'Categoría' in df_rutas_raw.columns else df_rutas_raw.columns[0]
+    cats_disponibles = ["Todas"] + sorted(list(df_rutas_raw[col_cat].dropna().unique()))
     filtro_cat = st.sidebar.selectbox("Filtrar por Categoría:", cats_disponibles)
 
-    movs_disponibles = ["Todas"] + sorted([m for m in df_rutas_raw['Movilidad'].unique() if m not in ['nan', 'None']])
+    col_mov = 'Movilidad' if 'Movilidad' in df_rutas_raw.columns else df_rutas_raw.columns[0]
+    movs_disponibles = ["Todas"] + sorted([m for m in df_rutas_raw[col_mov].unique() if str(m) not in ['nan', 'None']])
     filtro_mov = st.sidebar.selectbox("Filtrar por Movilidad:", movs_disponibles)
 
-    # Filtrar Dataset
+    # Filtrar
     df_filtrado = df_rutas_raw.copy()
     if filtro_dia != "Todos":
-        df_filtrado = df_filtrado[df_filtrado['Día'] == filtro_dia]
+        df_filtrado = df_filtrado[df_filtrado[col_dia] == filtro_dia]
     if filtro_cat != "Todas":
-        df_filtrado = df_filtrado[df_filtrado['Categoría'] == filtro_cat]
+        df_filtrado = df_filtrado[df_filtrado[col_cat] == filtro_cat]
     if filtro_mov != "Todas":
-        df_filtrado = df_filtrado[df_filtrado['Movilidad'] == filtro_mov]
+        df_filtrado = df_filtrado[df_filtrado[col_mov] == filtro_mov]
 
 # ==========================================
 # 4. CONTENIDO PRINCIPAL
@@ -123,19 +134,15 @@ if datos_cargados:
 
     if menu_opcion == "🚚 1. Control de Movilidades y Turnos":
         st.subheader("📋 Detalle Operativo de Rutas y Horarios")
-        st.dataframe(
-            df_filtrado[['Día', 'Categoría', 'Sucursal_1', 'Sucursal_2', 'Sucursal_3', 'Hora_Salida', 'Hora_Retorno', 'KM_Recorridos', 'Movilidad']],
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
 
     elif menu_opcion == "🗺️ 2. Mapa Interactivo de Rutas":
         st.subheader("🗺️ Mapeo Geográfico de Sucursales")
-        st.info("Módulo de mapa listo para activar en el siguiente paso.")
+        st.info("Módulo de mapa listo para desplegar.")
 
     elif menu_opcion == "📊 3. Dashboard KPI y Métricas":
         st.subheader("📊 Análisis de Rendimiento Logístico")
-        st.info("Módulo de métricas listo para activar.")
+        st.info("Módulo de métricas listo para desplegar.")
 
     elif menu_opcion == "🏢 4. Directorio de Sucursales":
         st.subheader("🏢 Directorio de Sucursales y Coordenadas GPS")
