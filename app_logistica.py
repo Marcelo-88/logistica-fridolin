@@ -216,7 +216,7 @@ def es_salida_madrugada(hora_str):
     except Exception:
         return False
 
-# Convierte texto de horas tipo "12:15:00 hrs", "7:40:00" o "7:40" a horas decimales (float)
+# Convierte texto de horas tipo "12:15:00 hrs" a decimal
 def parse_horas_a_decimal(cadena_horas):
     if not cadena_horas or pd.isna(cadena_horas):
         return 0.0
@@ -229,7 +229,7 @@ def parse_horas_a_decimal(cadena_horas):
     except Exception:
         return 0.0
 
-# Formatea un flotante de horas a string (ej. 7.666 -> "7:40:00")
+# Formatea flotante a string (ej. 7.66 -> "7:40:00")
 def decimal_a_horas_str(horas_dec):
     if horas_dec <= 0:
         return "0:00:00"
@@ -240,11 +240,31 @@ def decimal_a_horas_str(horas_dec):
         m = 0
     return f"{h}:{m:02d}:00"
 
-# Funion para ejecutar consultas IA con modelos alternativos (Fallback)
+# Función Robusta para Consultar IA (Resuelve 404 y 429)
 def generar_respuesta_ia(prompt):
-    modelos = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-8b']
+    modelos_candidatos = [
+        'models/gemini-2.0-flash',
+        'models/gemini-1.5-flash',
+        'models/gemini-1.5-flash-8b',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash'
+    ]
     
-    for mod in modelos:
+    # Intenta obtener la lista activa desde la API
+    try:
+        modelos_api = [
+            m.name for m in genai.list_models() 
+            if 'generateContent' in m.supported_generation_methods
+        ]
+        if modelos_api:
+            # Priorizar modelos Flash
+            modelos_flash = [m for m in modelos_api if 'flash' in m.lower()]
+            modelos_candidatos = modelos_flash + [m for m in modelos_api if m not in modelos_flash]
+    except Exception:
+        pass  # Si falla list_models usa la lista estática candidatos
+
+    ultimo_error = None
+    for mod in modelos_candidatos:
         try:
             m = genai.GenerativeModel(mod)
             res = m.generate_content(prompt)
@@ -252,14 +272,16 @@ def generar_respuesta_ia(prompt):
         except ResourceExhausted:
             continue
         except GoogleAPIError as e:
-            if "429" in str(e):
+            if "404" in str(e) or "429" in str(e) or "not found" in str(e).lower():
+                ultimo_error = e
                 continue
             else:
                 raise e
         except Exception as e:
-            raise e
+            ultimo_error = e
+            continue
             
-    raise ResourceExhausted("Se ha alcanzado el límite de cuota (429) en todos los modelos gratuitos. Por favor espera 1 o 2 minutos antes de realizar otra consulta.")
+    raise Exception(f"No fue posible conectar con los modelos de IA. Detalle: {ultimo_error}")
 
 # ==========================================
 # 2. CARGA Y LIMPIEZA DE DATOS
@@ -308,11 +330,8 @@ def cargar_datos_logistica():
             if mov in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']:
                 dia_asignado = dia_actual
                 
-                # Regla 1: Entrada Domingo 22:00 -> Jornada del Lunes
                 if mov == '1' and dia_actual == 'Domingo' and ingreso.startswith('22:'):
                     dia_asignado = 'Lunes'
-
-                # Regla 2: Entrada Viernes 22:00 -> Turno que transcurre el Sábado
                 elif mov == '1' and dia_actual == 'Viernes' and ingreso.startswith('22:'):
                     dia_asignado = 'Sábado'
 
@@ -840,7 +859,6 @@ if datos_cargados:
         st.caption("Aprovecha la Inteligencia Artificial para analizar rutas, optimizar la secuencia de entrega y resolver dudas de operación.")
         st.divider()
 
-        # Obtener la API Key y el PIN configurados en Secrets
         api_key_secret = st.secrets.get("GEMINI_API_KEY", "")
         pin_secret = str(st.secrets.get("ADMIN_PIN", "")).strip()
 
@@ -880,7 +898,6 @@ if datos_cargados:
                                 st.write(f"**Rutas encontradas:** {len(df_rutas_ia)}")
                                 if st.button("🪄 Generar Recomendación de Optimización con IA", use_container_width=True):
                                     with st.spinner("Analizando secuencia y tiempos con IA..."):
-                                        # Preparación ultra-compacta para ahorro extremo de tokens
                                         cols_suck = [c for c in df_rutas_ia.columns if 'Sucursal' in str(c)]
                                         resumen_lineas = []
                                         for _, r in df_rutas_ia.iterrows():
@@ -910,29 +927,26 @@ if datos_cargados:
                             st.subheader("💬 Consulta Rápida a la Operación")
                             st.caption("Realiza cualquier pregunta sobre los datos cargados de rutas o movilidades.")
 
-                            query_ia = st.text_area("Pregunta sobre la logística:", placeholder="Ej: ¿Qué movilidades tienen turnos de madrugada el día Lunes y qué sucursales atienden?")
+                            query_ia = st.text_area("Pregunta sobre la logística:", placeholder="Ej: ¿Qué movilidades salen los martes de día y qué llevan?")
 
                             if st.button("🔍 Consultar IA", use_container_width=True):
                                 if not query_ia.strip():
                                     st.warning("Escribe una consulta antes de enviar.")
                                 else:
                                     with st.spinner("Consultando con IA..."):
-                                        # Preparar un resumen hiper-compacto en texto para no saturar los tokens por minuto
                                         cols_suck = [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
                                         rutas_resumidas = []
-                                        for _, r in df_rutas_raw.head(80).iterrows(): # Límite preventivo de filas
+                                        for _, r in df_rutas_raw.head(100).iterrows():
                                             p = [str(r[c]).strip() for c in cols_suck if str(r[c]).strip() not in ['', 'nan', 'None']]
                                             if p:
-                                                rutas_resumidas.append(f"Día:{r.get(col_dia,'')} | Mov:{r.get(col_mov,'')} | Cat:{r.get(col_cat,'')} | Sal:{r.get(col_h_salida,'')} | Ruta:{'->'.join(p)}")
+                                                rutas_resumidas.append(f"Día:{r.get(col_dia,'')} | Mov:{r.get(col_mov,'')} | Cat:{r.get(col_cat,'')} | Sal:{r.get(col_h_salida,'')} | Ret:{r.get(col_h_retorno,'')} | Ruta:{'->'.join(p)}")
 
                                         txt_rutas = "\n".join(rutas_resumidas)
-
-                                        # Resumen compacto de jornadas
                                         jornadas_txt = "\n".join([f"Día:{r['Día']} | Mov:{r['Movilidad']} | Ent:{r['Ingreso']} | Sal:{r['Salida']}" for _, r in df_movilidades_raw.iterrows() if r['Ingreso'] != ''])
 
                                         prompt_chat = f"""
                                         Eres el asistente de logística de la pastelería Fridolin.
-                                        Responde la consulta basándote únicamente en estos datos operacionales:
+                                        Responde la consulta basándote en los siguientes datos operacionales:
 
                                         [DESPACHOS Y RUTAS]
                                         {txt_rutas}
@@ -941,7 +955,7 @@ if datos_cargados:
                                         {jornadas_txt}
 
                                         Consulta del usuario: {query_ia}
-                                        Responde de forma clara, concisa y profesional.
+                                        Responde de forma clara, directa, puntual y estructurada.
                                         """
                                         
                                         respuesta_chat = generar_respuesta_ia(prompt_chat)
@@ -949,8 +963,6 @@ if datos_cargados:
                                         st.markdown("### 🤖 Respuesta del Asistente:")
                                         st.markdown(respuesta_chat)
 
-                    except ResourceExhausted as e_quota:
-                        st.error(f"⏳ {e_quota}")
                     except Exception as e_ia:
                         st.error(f"⚠️ Ocurrió un inconveniente al procesar la solicitud: {e_ia}")
                 else:
