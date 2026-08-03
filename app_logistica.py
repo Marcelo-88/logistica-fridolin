@@ -3,6 +3,7 @@ import pandas as pd
 import unicodedata
 import urllib.parse
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 
 # ==========================================
 # 1. CONFIGURACIÓN Y PALETA DE COLOR FRIDOLIN
@@ -238,6 +239,27 @@ def decimal_a_horas_str(horas_dec):
         h += 1
         m = 0
     return f"{h}:{m:02d}:00"
+
+# Funion para ejecutar consultas IA con modelos alternativos (Fallback)
+def generar_respuesta_ia(prompt):
+    modelos = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-8b']
+    
+    for mod in modelos:
+        try:
+            m = genai.GenerativeModel(mod)
+            res = m.generate_content(prompt)
+            return res.text
+        except ResourceExhausted:
+            continue
+        except GoogleAPIError as e:
+            if "429" in str(e):
+                continue
+            else:
+                raise e
+        except Exception as e:
+            raise e
+            
+    raise ResourceExhausted("Se ha alcanzado el límite de cuota (429) en todos los modelos gratuitos. Por favor espera 1 o 2 minutos antes de realizar otra consulta.")
 
 # ==========================================
 # 2. CARGA Y LIMPIEZA DE DATOS
@@ -823,9 +845,8 @@ if datos_cargados:
         pin_secret = str(st.secrets.get("ADMIN_PIN", "")).strip()
 
         if not api_key_secret:
-            st.error("⚠️ La clave `GEMINI_API_KEY` no está configurada en los Secrets de la aplicación. Por favor, añádela en la configuración de Streamlit Cloud.")
+            st.error("⚠️ La clave `GEMINI_API_KEY` no está configurada en los Secrets de la aplicación.")
         else:
-            # Control de Acceso por PIN
             col_pin, _ = st.columns([1, 2])
             with col_pin:
                 pin_ingresado = st.text_input("🔑 Ingrese el PIN de Acceso Autorizado:", type="password", placeholder="****")
@@ -836,9 +857,7 @@ if datos_cargados:
                     st.divider()
 
                     try:
-                        # CONFIGURACIÓN ESTABLE CON GEMINI-2.0-FLASH
                         genai.configure(api_key=api_key_secret)
-                        model = genai.GenerativeModel('gemini-2.0-flash')
 
                         tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
 
@@ -860,28 +879,36 @@ if datos_cargados:
                             else:
                                 st.write(f"**Rutas encontradas:** {len(df_rutas_ia)}")
                                 if st.button("🪄 Generar Recomendación de Optimización con IA", use_container_width=True):
-                                    with st.spinner("Analizando secuencia, tiempos y distribución con IA..."):
+                                    with st.spinner("Analizando secuencia y tiempos con IA..."):
+                                        # Preparación ultra-compacta para ahorro extremo de tokens
+                                        cols_suck = [c for c in df_rutas_ia.columns if 'Sucursal' in str(c)]
+                                        resumen_lineas = []
+                                        for _, r in df_rutas_ia.iterrows():
+                                            p = [str(r[c]).strip() for c in cols_suck if str(r[c]).strip() not in ['', 'nan', 'None']]
+                                            resumen_lineas.append(f"Cat: {r.get(col_cat,'')}, Salida: {r.get(col_h_salida,'')}, Retorno: {r.get(col_h_retorno,'')}, Paradas: {' -> '.join(p)}")
+                                        
+                                        datos_txt = "\n".join(resumen_lineas)
+
                                         prompt_opt = f"""
-                                        Eres un experto en logística urbana y optimización de rutas para la empresa pastelera Fridolin en Santa Cruz, Bolivia.
-                                        Analiza la siguiente programación de despachos para el día {dia_ia} en la {mov_ia}:
+                                        Eres un experto en logística de entregas para la empresa Fridolin en Bolivia.
+                                        Analiza estas salidas de la {mov_ia} para el día {dia_ia}:
 
-                                        DATOS DE LAS SALIDAS DE LA MOVILIDAD (Formato Tabla Markdown):
-                                        {df_rutas_ia.to_markdown(index=False)}
+                                        {datos_txt}
 
-                                        Por favor provee:
-                                        1. Un análisis crítico del horario de salida y retorno estimado.
-                                        2. Evaluación de la secuencia de paradas de sucursales (¿Es eficiente el orden propuesto?).
-                                        3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
-                                        Responde en un tono profesional, claro y directo, usando viñetas.
+                                        Genera:
+                                        1. Evaluación breve de horarios y secuencia de paradas.
+                                        2. Recomendaciones concisas para reducir tiempos y combustible.
+                                        Responde en formato punto por punto.
                                         """
-                                        response = model.generate_content(prompt_opt)
+                                        
+                                        respuesta = generar_respuesta_ia(prompt_opt)
                                         st.markdown("---")
                                         st.markdown("### 📋 Recomendación Generada:")
-                                        st.markdown(response.text)
+                                        st.markdown(respuesta)
 
                         with tab_chat:
                             st.subheader("💬 Consulta Rápida a la Operación")
-                            st.caption("Realiza cualquier pregunta sobre los datos cargados de rutas, horarios o movilidades.")
+                            st.caption("Realiza cualquier pregunta sobre los datos cargados de rutas o movilidades.")
 
                             query_ia = st.text_area("Pregunta sobre la logística:", placeholder="Ej: ¿Qué movilidades tienen turnos de madrugada el día Lunes y qué sucursales atienden?")
 
@@ -890,33 +917,42 @@ if datos_cargados:
                                     st.warning("Escribe una consulta antes de enviar.")
                                 else:
                                     with st.spinner("Consultando con IA..."):
-                                        # 🔹 OPTIMIZACIÓN DE TOKENS: Seleccionamos únicamente las columnas operativas relevantes
-                                        cols_rutas = [c for c in [col_dia, col_cat, col_mov, col_h_salida, col_h_retorno] if c and c in df_rutas_raw.columns]
-                                        cols_rutas += [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
-                                        
-                                        df_rutas_resumido = df_rutas_raw[cols_rutas]
+                                        # Preparar un resumen hiper-compacto en texto para no saturar los tokens por minuto
+                                        cols_suck = [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
+                                        rutas_resumidas = []
+                                        for _, r in df_rutas_raw.head(80).iterrows(): # Límite preventivo de filas
+                                            p = [str(r[c]).strip() for c in cols_suck if str(r[c]).strip() not in ['', 'nan', 'None']]
+                                            if p:
+                                                rutas_resumidas.append(f"Día:{r.get(col_dia,'')} | Mov:{r.get(col_mov,'')} | Cat:{r.get(col_cat,'')} | Sal:{r.get(col_h_salida,'')} | Ruta:{'->'.join(p)}")
+
+                                        txt_rutas = "\n".join(rutas_resumidas)
+
+                                        # Resumen compacto de jornadas
+                                        jornadas_txt = "\n".join([f"Día:{r['Día']} | Mov:{r['Movilidad']} | Ent:{r['Ingreso']} | Sal:{r['Salida']}" for _, r in df_movilidades_raw.iterrows() if r['Ingreso'] != ''])
 
                                         prompt_chat = f"""
-                                        Eres el asistente logístico inteligente de la pastelería Fridolin en Santa Cruz.
-                                        Responde la consulta del usuario basándote ÚNICAMENTE en la siguiente información operativa del sistema:
+                                        Eres el asistente de logística de la pastelería Fridolin.
+                                        Responde la consulta basándote únicamente en estos datos operacionales:
 
-                                        RESUMEN DE RUTAS Y DESPACHOS:
-                                        {df_rutas_resumido.to_markdown(index=False)}
+                                        [DESPACHOS Y RUTAS]
+                                        {txt_rutas}
 
-                                        JORNADAS Y TURNOS DE MOVILIDADES:
-                                        {df_movilidades_raw.to_markdown(index=False)}
+                                        [JORNADAS DE CHOFERES]
+                                        {jornadas_txt}
 
-                                        Pregunta del usuario: {query_ia}
-
-                                        Responde de forma concisa, profesional y directa utilizando viñetas.
+                                        Consulta del usuario: {query_ia}
+                                        Responde de forma clara, concisa y profesional.
                                         """
-                                        response_chat = model.generate_content(prompt_chat)
+                                        
+                                        respuesta_chat = generar_respuesta_ia(prompt_chat)
                                         st.markdown("---")
                                         st.markdown("### 🤖 Respuesta del Asistente:")
-                                        st.markdown(response_chat.text)
+                                        st.markdown(respuesta_chat)
 
+                    except ResourceExhausted as e_quota:
+                        st.error(f"⏳ {e_quota}")
                     except Exception as e_ia:
-                        st.error(f"Error al conectar con el servicio de IA: {e_ia}")
+                        st.error(f"⚠️ Ocurrió un inconveniente al procesar la solicitud: {e_ia}")
                 else:
                     st.error("❌ PIN incorrecto. Ingrese el PIN de autorización para acceder al Asistente e IA.")
             else:
