@@ -377,25 +377,32 @@ if datos_cargados:
             st.warning("No hay datos de movilidades que coincidan con los filtros seleccionados.")
 
     # ----------------------------------------------------
-    # VISTA 3: MAPA DE SUCURSALES (GOOGLE MY MAPS FIX)
+    # VISTA 3: MAPA DE SUCURSALES (FIX DEFINITIVO)
     # ----------------------------------------------------
     elif menu_opcion == "🗺️ 3. Mapa de Sucursales":
         st.title("🗺️ Mapa Geográfico de Sucursales")
         st.caption("Ubicación interactiva con cobertura de Montero y Santa Cruz.")
         st.divider()
 
-        mapa_embed_url = "https://www.google.com/maps/d/viewer?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA"
-        mapa_directo_url = "https://www.google.com/maps/d/u/0/viewer?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA"
+        MAP_ID = "1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA"
+
+        mapa_embed_url = f"https://www.google.com/maps/d/embed?mid={MAP_ID}&ehbc=2E312F"
+        mapa_directo_url = f"https://www.google.com/maps/d/viewer?mid={MAP_ID}"
 
         col_map1, col_map2 = st.columns([3, 1])
         with col_map1:
-            st.info("💡 Puedes interactuar directamente con el mapa aquí abajo:")
+            st.info("💡 Si el mapa no carga, verifica que el archivo en Google My Maps esté configurado como Público ('Cualquier persona con el enlace').")
         with col_map2:
             st.link_button("↗️ Abrir en Google Maps", mapa_directo_url, use_container_width=True)
 
-        st.components.v1.iframe(
-            src=mapa_embed_url,
-            width=1100,
-            height=600,
-            scrolling=True
-        )
+        html_iframe = f"""
+            <iframe 
+                src="{mapa_embed_url}" 
+                width="100%" 
+                height="600" 
+                style="border:0; border-radius:12px;" 
+                allowfullscreen="" 
+                loading="lazy">
+            </iframe>
+        """
+        st.components.v1.html(html_iframe, height=620)
