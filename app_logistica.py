@@ -813,7 +813,7 @@ if datos_cargados:
         st.components.v1.html(html_iframe, height=620)
 
     # ----------------------------------------------------
-    # VISTA 6: ASISTENTE & OPTIMIZADOR IA
+    # VISTA 6: ASISTENTE & OPTIMIZADOR IA (ACTUALIZADO)
     # ----------------------------------------------------
     elif menu_opcion == "🤖 6. Asistente & Optimizador IA":
         st.title("🤖 Asistente Logístico Inteligente & Optimizador")
@@ -825,12 +825,22 @@ if datos_cargados:
         if not api_key:
             api_key = st.text_input("🔑 Ingrese su API Key de Google Gemini para activar las funciones de IA:", type="password")
 
-        if not api_key:
+        if not api_key or not str(api_key).strip():
             st.warning("⚠️ Se requiere una API Key de Google Gemini válida para usar este módulo. Puedes configurarla en `.streamlit/secrets.toml` con el nombre `GEMINI_API_KEY` o ingresarla arriba.")
         else:
+            # Función auxiliar para instanciar el modelo Gemini
+            def obtener_modelo_ia(key_str):
+                genai.configure(api_key=key_str.strip())
+                # Se prueban primero las versiones más recientes y eficientes
+                for model_name in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+                    try:
+                        return genai.GenerativeModel(model_name)
+                    except Exception:
+                        continue
+                return genai.GenerativeModel('gemini-1.5-flash')
+
             try:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = obtener_modelo_ia(api_key)
 
                 tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
 
@@ -858,7 +868,7 @@ if datos_cargados:
                                 Analiza la siguiente programación de despachos para el día {dia_ia} en la {mov_ia}:
 
                                 DATOS DE LAS SALIDAS DE LA MOVILIDAD:
-                                {df_rutas_ia.to_string()}
+                                {df_rutas_ia.to_csv(index=False)}
 
                                 Por favor provee:
                                 1. Un análisis crítico del horario de salida y retorno estimado.
@@ -866,10 +876,13 @@ if datos_cargados:
                                 3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
                                 Responde en un tono profesional, claro y directo, usando viñetas.
                                 """
-                                response = model.generate_content(prompt_opt)
-                                st.markdown("---")
-                                st.markdown("### 📋 Recomendación Generada:")
-                                st.markdown(response.text)
+                                try:
+                                    response = model.generate_content(prompt_opt)
+                                    st.markdown("---")
+                                    st.markdown("### 📋 Recomendación Generada:")
+                                    st.markdown(response.text)
+                                except Exception as err_gen:
+                                    st.error(f"Error durante la generación de contenido: {err_gen}")
 
                 with tab_chat:
                     st.subheader("💬 Consulta Rápida a la Operación")
@@ -887,19 +900,23 @@ if datos_cargados:
                                 Tienes acceso a los siguientes datos actuales del sistema:
 
                                 TABLA DE RUTAS Y DESPACHOS:
-                                {df_rutas_raw.to_string()}
+                                {df_rutas_raw.to_csv(index=False)}
 
                                 TABLA DE JORNADAS Y TURNOS:
-                                {df_movilidades_raw.to_string()}
+                                {df_movilidades_raw.to_csv(index=False)}
 
                                 Pregunta del usuario: {query_ia}
 
                                 Responde basándote estrictamente en los datos provistos arriba.
                                 """
-                                response_chat = model.generate_content(prompt_chat)
-                                st.markdown("---")
-                                st.markdown("### 🤖 Respuesta del Asistente:")
-                                st.markdown(response_chat.text)
+                                try:
+                                    response_chat = model.generate_content(prompt_chat)
+                                    st.markdown("---")
+                                    st.markdown("### 🤖 Respuesta del Asistente:")
+                                    st.markdown(response_chat.text)
+                                mexc_chat = Exception
+                                except Exception as err_chat:
+                                    st.error(f"Error al procesar la respuesta: {err_chat}")
 
             except Exception as e_ia:
                 st.error(f"Error al conectar con el servicio de IA: {e_ia}")
