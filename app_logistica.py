@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados para Tarjetas y Badges
+# Estilos CSS personalizados
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
@@ -55,6 +55,16 @@ st.markdown("""
         border-radius: 20px;
         font-weight: 600;
         font-size: 0.85rem;
+    }
+    .badge-time {
+        background-color: #e0f2fe;
+        color: #0369a1;
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        display: inline-block;
+        margin-top: 6px;
     }
     
     /* Secuencia de Paradas */
@@ -120,6 +130,7 @@ def cargar_datos_logistica():
                 bloques_movilidades.append({
                     'Día': dia_actual,
                     'Movilidad': f"Movilidad {mov}",
+                    'Num_Mov': mov,
                     'Ingreso': ingreso if ingreso not in ['nan', 'None'] else '',
                     'Salida': salida if salida not in ['nan', 'None'] else '',
                     'Total Horas': total if total not in ['nan', 'None'] else ''
@@ -195,89 +206,97 @@ if datos_cargados:
 
     st.sidebar.divider()
 
+    # MENÚ REDISEÑADO SIN MÉTRICAS
     menu_opcion = st.sidebar.radio(
         "📌 Modo de Vista:",
         [
-            "🎴 1. Tarjetas de Ruta (Visual)",
-            "⏱️ 2. Horarios de Movilidad",
-            "📊 3. Métricas y Frecuencias",
-            "🏢 4. Mapa y Directorio Sucursales"
+            "🎴 1. Tarjetas de Ruta y Horarios",
+            "⏱️ 2. Jornada de Movilidades",
+            "🗺️ 3. Mapa de Sucursales"
         ]
     )
 
 # ==========================================
-# 4. VISTAS INTERACTIVAS REDISEÑADAS
+# 4. VISTAS INTERACTIVAS
 # ==========================================
 if datos_cargados:
 
     # ----------------------------------------------------
-    # VISTA 1: TARJETAS DE RUTA VISUALES
+    # VISTA 1: TARJETAS DE RUTA + HORARIO DE SALIDA / RETORNO
     # ----------------------------------------------------
-    if menu_opcion == "🎴 1. Tarjetas de Ruta (Visual)":
-        st.title("🚚 Tarjetas de Recorridos y Paradas")
-        st.caption("Visión clara de cada secuencia de distribución sin celdas vacías ni formato de tabla.")
+    if menu_opcion == "🎴 1. Tarjetas de Ruta y Horarios":
+        st.title("🚚 Planificación de Rutas y Horarios Estimados")
+        st.caption("Secuencia visual de paradas junto con su hora de salida y retorno asignados.")
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Rutas Activas", f"{len(df_filtrado)}")
-        col2.metric("Categorías en Pantalla", f"{df_filtrado[col_cat].nunique() if col_cat else 0}")
-        col3.metric("Días Abarcados", f"{df_filtrado[col_dia].nunique() if col_dia else 0}")
+        col1.metric("Rutas en Vista", f"{len(df_filtrado)}")
+        col2.metric("Categorías", f"{df_filtrado[col_cat].nunique() if col_cat else 0}")
+        col3.metric("Días Filtrados", f"{df_filtrado[col_dia].nunique() if col_dia else 0}")
         st.divider()
 
-        # Selector de formato: Tarjetas vs Tabla
-        modo_vista = st.segmented_control(
-            "Estilo de Presentación:",
-            options=["🎴 Tarjetas Interactivas", "📊 Tabla Tradicional"],
-            default="🎴 Tarjetas Interactivas"
-        )
+        cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in c]
+        col_mov = next((c for c in df_filtrado.columns if 'Movilidad' in c), None)
+        col_frec = next((c for c in df_filtrado.columns if 'Frec' in c or 'frec' in c), None)
+        col_com = next((c for c in df_filtrado.columns if 'Comentario' in c), None)
 
-        if modo_vista == "🎴 Tarjetas Interactivas":
-            cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in c]
-            col_mov = next((c for c in df_filtrado.columns if 'Movilidad' in c), None)
-            col_frec = next((c for c in df_filtrado.columns if 'Frec' in c or 'frec' in c), None)
-            col_com = next((c for c in df_filtrado.columns if 'Comentario' in c), None)
+        if len(df_filtrado) == 0:
+            st.info("No hay rutas que coincidan con los filtros seleccionados.")
 
-            if len(df_filtrado) == 0:
-                st.info("No hay rutas que coincidan con los filtros seleccionados.")
+        for idx, row in df_filtrado.iterrows():
+            dia = row.get(col_dia, '')
+            cat = row.get(col_cat, '')
+            mov = row.get(col_mov, '')
+            frec = row.get(col_frec, '')
+            comentario = row.get(col_com, '')
 
-            for idx, row in df_filtrado.iterrows():
-                dia = row.get(col_dia, '')
-                cat = row.get(col_cat, '')
-                mov = row.get(col_mov, '')
-                frec = row.get(col_frec, '')
-                comentario = row.get(col_com, '')
+            # Cruce de hora de salida y retorno desde la tabla de movilidades
+            hora_salida = "Sin especificar"
+            hora_retorno = "Sin especificar"
 
-                # Extraer solo las sucursales con valor real
-                paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
+            if mov and not df_movilidades_raw.empty:
+                # Buscar correspondencia por día y movilidad
+                match = df_movilidades_raw[(df_movilidades_raw['Día'] == dia) & (df_movilidades_raw['Num_Mov'] == str(mov))]
+                if not match.empty:
+                    hora_salida = match.iloc[0]['Ingreso']
+                    hora_retorno = match.iloc[0]['Salida']
 
-                # Renderizado de Tarjeta
-                with st.container():
-                    st.markdown(f"""
-                        <div class="route-card">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <div>
-                                    <span class="badge-day">📅 {dia}</span>
-                                    <span class="badge-cat">📦 {cat}</span>
-                                    {f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov else ''}
-                                </div>
-                                <small style="color: #64748b; font-weight: 500;">{frec}</small>
+            # Extraer sucursales reales
+            paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
+
+            # Renderizado de Tarjeta
+            with st.container():
+                st.markdown(f"""
+                    <div class="route-card">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                            <div>
+                                <span class="badge-day">📅 {dia}</span>
+                                <span class="badge-cat">📦 {cat}</span>
+                                {f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov else ''}
                             </div>
-                            <div style="margin-top: 8px;">
-                                <strong style="color: #475569; font-size: 0.9rem;">Secuencia de Paradas:</strong><br>
-                                {' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])}
-                            </div>
-                            {f'<div style="margin-top: 10px; font-size: 0.85rem; color: #d97706; background-color: #fffbeb; padding: 6px 10px; border-radius: 6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario else ''}
+                            <small style="color: #64748b; font-weight: 500;">{frec}</small>
                         </div>
-                    """, unsafe_allow_html=True)
+                        
+                        <!-- BLOQUE DE HORARIOS DE SALIDA Y RETORNO -->
+                        <div style="margin-bottom: 12px;">
+                            <span class="badge-time">🚀 Salida Planta: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span>
+                        </div>
 
-        else:
-            st.dataframe(df_filtrado, use_container_width=True, hide_index=True, height=500)
+                        <!-- SECUENCIA DE PARADAS -->
+                        <div style="margin-top: 8px;">
+                            <strong style="color: #475569; font-size: 0.9rem;">Secuencia de Recorrido:</strong><br>
+                            {' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])}
+                        </div>
+                        
+                        {f'<div style="margin-top: 10px; font-size: 0.85rem; color: #d97706; background-color: #fffbeb; padding: 6px 10px; border-radius: 6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario else ''}
+                    </div>
+                """, unsafe_allow_html=True)
 
     # ----------------------------------------------------
-    # VISTA 2: HORARIOS DE MOVILIDAD
+    # VISTA 2: JORNADA DE MOVILIDADES
     # ----------------------------------------------------
-    elif menu_opcion == "⏱️ 2. Horarios de Movilidad":
-        st.title("⏱️ Turnos de Movilidades por Día")
-        st.caption("Estructura clara de horarios de ingreso, salida y total de horas.")
+    elif menu_opcion == "⏱️ 2. Jornada de Movilidades":
+        st.title("⏱️ Turnos y Horarios por Movilidad")
+        st.caption("Detalle completo de turnos por día para los choferes y unidades.")
         st.divider()
 
         if not df_mov_filtrado.empty:
@@ -296,7 +315,7 @@ if datos_cargados:
                                 <div style="background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
                                     <div>
                                         <strong style="color: #1e293b; font-size: 1.05rem;">🚛 {row['Movilidad']}</strong><br>
-                                        <span style="color: #64748b; font-size: 0.9rem;">⏰ Ingreso: <b>{row['Ingreso']}</b> | Salida: <b>{row['Salida']}</b></span>
+                                        <span style="color: #0284c7; font-size: 0.95rem;">🚀 Salida: <b>{row['Ingreso']}</b> &nbsp;|&nbsp; 🏁 Retorno: <b>{row['Salida']}</b></span>
                                     </div>
                                     <div style="background-color: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-weight: 700; color: #0f172a;">
                                         ⏳ {row['Total Horas']} hrs
@@ -306,36 +325,27 @@ if datos_cargados:
                     
                     with col_right:
                         st.metric("Movilidades en Servicio", len(df_dia))
-                        st.info(f"Horarios de turno asignados para la jornada de **{dia}**.")
+                        st.info(f"Programación de salidas y retornos para el **{dia}**.")
         else:
             st.warning("No hay datos de movilidades para los días filtrados.")
 
     # ----------------------------------------------------
-    # VISTA 3: METRICAS Y FRECUENCIAS
+    # VISTA 3: MAPA DE SUCURSALES (EMBED GOOGLE MY MAPS)
     # ----------------------------------------------------
-    elif menu_opcion == "📊 3. Métricas y Frecuencias":
-        st.title("📊 Indicadores de Logística")
+    elif menu_opcion == "🗺️ 3. Mapa de Sucursales":
+        st.title("🗺️ Mapa Geográfico de Sucursales")
+        st.caption("Ubicación interactiva con nombres, lista desplegable y cobertura de Montero y Santa Cruz.")
         st.divider()
 
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("Rutas por Categoría")
-            if col_cat and col_cat in df_filtrado.columns:
-                st.bar_chart(df_filtrado[col_cat].value_counts(), color="#2563eb")
+        # Enlace directo al mapa original de Google My Maps
+        mapa_url = "https://www.google.com/maps/d/u/0/embed?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA&ehbc=2E312F"
 
-        with c2:
-            st.subheader("Carga Operativa por Día")
-            if col_dia and col_dia in df_filtrado.columns:
-                st.bar_chart(df_filtrado[col_dia].value_counts(), color="#0d9488")
+        # Contenedor iframe para renderizar el mapa idéntico al screenshot
+        st.components.v1.iframe(
+            src=mapa_url,
+            width=1100,
+            height=650,
+            scrolling=True
+        )
 
-    # ----------------------------------------------------
-    # VISTA 4: SUCURSALES Y MAPA
-    # ----------------------------------------------------
-    elif menu_opcion == "🏢 4. Mapa y Directorio Sucursales":
-        st.title("🏢 Red de Sucursales")
-        st.divider()
-
-        if not df_sucursales_raw.empty:
-            st.dataframe(df_sucursales_raw, use_container_width=True, hide_index=True)
-        else:
-            st.info("No hay datos cargados de sucursales.")
+        st.caption("💡 *Puedes hacer zoom out para ver la sucursal de Montero o pulsar en la barra lateral izquierda del mapa para filtrar por sucursal.*")
