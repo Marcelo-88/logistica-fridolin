@@ -232,9 +232,23 @@ except Exception as e:
     datos_cargados = False
 
 # ==========================================
-# 3. FILTROS Y SIDEBAR (ESTILO FRIDOLIN)
+# 3. DETECCIÓN AUTOMÁTICA DE COLUMNAS
 # ==========================================
 if datos_cargados:
+    col_dia = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['dí', 'dia'])), df_rutas_raw.columns[0])
+    col_cat = next((c for c in df_rutas_raw.columns if 'cat' in str(c).lower()), None)
+    
+    # Detección flexible de movilidad (por nombre o por 3ra posición)
+    col_mov = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['mov', 'unidad', 'camion', 'vehiculo'])), None)
+    if not col_mov and len(df_rutas_raw.columns) >= 3:
+        col_mov = df_rutas_raw.columns[2]
+
+    col_h_salida = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['hora_sal', 'salida'])), None)
+    col_h_retorno = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['hora_ret', 'retorno'])), None)
+
+    # ==========================================
+    # 4. FILTROS Y SIDEBAR
+    # ==========================================
     try:
         st.sidebar.image("Fridolin_logo.jpg", use_container_width=True)
     except Exception:
@@ -248,15 +262,9 @@ if datos_cargados:
     df_filtrado = df_rutas_raw.copy()
     df_mov_filtrado = df_movilidades_raw.copy()
 
-    col_dia = next((c for c in df_rutas_raw.columns if 'Dí' in c or 'Di' in c or 'dí' in c), None)
-    col_cat = next((c for c in df_rutas_raw.columns if 'Cat' in c or 'cat' in c), None)
-    col_mov = next((c for c in df_rutas_raw.columns if 'Movilidad' in c or 'movilidad' in c or 'MOV' in c), None)
-    col_h_salida = next((c for c in df_rutas_raw.columns if 'Hora_Sal' in c or 'Salida' in c or 'Hora_sal' in c), None)
-    col_h_retorno = next((c for c in df_rutas_raw.columns if 'Hora_Ret' in c or 'Retorno' in c or 'Hora_ret' in c), None)
-
     # 1. Filtro de Días
     if col_dia and col_dia in df_rutas_raw.columns:
-        dias_disponibles = [d for d in df_rutas_raw[col_dia].unique() if d and d != 'nan']
+        dias_disponibles = [d for d in df_rutas_raw[col_dia].unique() if d and str(d).strip() not in ['nan', 'None', '']]
         dias_seleccionados = st.sidebar.multiselect(
             "📅 Seleccionar Día(s):",
             options=dias_disponibles,
@@ -269,7 +277,7 @@ if datos_cargados:
 
     # 2. Filtro Categorías
     if col_cat and col_cat in df_rutas_raw.columns:
-        cats_disponibles = [c for c in df_rutas_raw[col_cat].unique() if c and c != 'nan']
+        cats_disponibles = [c for c in df_rutas_raw[col_cat].unique() if c and str(c).strip() not in ['nan', 'None', '']]
         cats_seleccionadas = st.sidebar.multiselect(
             "📦 Categoría(s):",
             options=cats_disponibles,
@@ -354,7 +362,7 @@ def renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, c
     st.markdown(card_html, unsafe_allow_html=True)
 
 # ==========================================
-# 4. VISTAS INTERACTIVAS
+# 5. VISTAS INTERACTIVAS
 # ==========================================
 if datos_cargados:
 
@@ -371,9 +379,9 @@ if datos_cargados:
         col3.metric("Días Visibles", f"{df_filtrado[col_dia].nunique() if col_dia else 0}")
         st.divider()
 
-        cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in c]
-        col_frec = next((c for c in df_filtrado.columns if 'Frec' in c or 'frec' in c), None)
-        col_com = next((c for c in df_filtrado.columns if 'Comentario' in c), None)
+        cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in str(c)]
+        col_frec = next((c for c in df_filtrado.columns if 'frec' in str(c).lower()), None)
+        col_com = next((c for c in df_filtrado.columns if 'comentario' in str(c).lower()), None)
 
         if len(df_filtrado) == 0:
             st.info("No se encontraron rutas para los filtros seleccionados.")
@@ -382,33 +390,29 @@ if datos_cargados:
             renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
 
     # ----------------------------------------------------
-    # VISTA 2: COMPARADOR DE MOVILIDADES (CORREGIDO)
+    # VISTA 2: COMPARADOR DE MOVILIDADES
     # ----------------------------------------------------
     elif menu_opcion == "⚖️ 2. Comparador de Movilidades":
         st.title("⚖️ Comparador Lado a Lado de Movilidades")
         st.caption("Compara el itinerario de dos unidades para evaluar fusión, reasignación o combinación de rutas.")
 
-        # Asegurar detección de columnas requeridas
-        cols_sucursales = [c for c in df_rutas_raw.columns if 'Sucursal' in c]
-        col_frec = next((c for c in df_rutas_raw.columns if 'Frec' in c or 'frec' in c), None)
-        col_com = next((c for c in df_rutas_raw.columns if 'Comentario' in c), None)
+        cols_sucursales = [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
+        col_frec = next((c for c in df_rutas_raw.columns if 'frec' in str(c).lower()), None)
+        col_com = next((c for c in df_rutas_raw.columns if 'comentario' in str(c).lower()), None)
         
-        # Detección defensiva de la columna Movilidad
         if not col_mov:
-            col_mov = next((c for c in df_rutas_raw.columns if 'Movilidad' in c or 'movilidad' in c or 'MOV' in c), None)
-
-        if not col_mov:
-            st.error("⚠️ No se encontró la columna de Movilidad en la base de datos de Rutas.")
+            st.error("⚠️ No se pudo identificar la columna de Movilidad en la tabla.")
         else:
-            # 1. Selección de Día
-            dias_lista = [d for d in df_rutas_raw[col_dia].unique() if d and str(d) not in ['nan', 'None', '']] if col_dia else []
+            # Selección de Día
+            dias_lista = [d for d in df_rutas_raw[col_dia].unique() if d and str(d).strip() not in ['nan', 'None', '']]
             dia_comp = st.selectbox("📅 Selecciona el Día a Analizar:", options=dias_lista)
 
             # Filtrar rutas por día seleccionado
-            df_dia_base = df_rutas_raw[df_rutas_raw[col_dia] == dia_comp] if col_dia else df_rutas_raw
+            df_dia_base = df_rutas_raw[df_rutas_raw[col_dia] == dia_comp]
 
-            # Lista de movilidades disponibles en ese día
-            movilidades_disponibles = sorted([str(m).strip() for m in df_dia_base[col_mov].unique() if m and str(m) not in ['nan', 'None', '']])
+            # Obtenemos movilidades únicas formateadas
+            raw_movs = df_dia_base[col_mov].dropna().astype(str).str.strip().unique()
+            movilidades_disponibles = sorted([m for m in raw_movs if m and m not in ['nan', 'None', '']])
 
             st.divider()
 
@@ -425,13 +429,13 @@ if datos_cargados:
                     if mov_a:
                         df_mov_a = df_dia_base[df_dia_base[col_mov].astype(str).str.strip() == mov_a]
                         
-                        # Buscar info de jornada
-                        jornada_a = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'] == str(mov_a))]
-                        if not jornada_a.empty:
-                            ing_a = jornada_a.iloc[0]['Ingreso']
-                            sal_a = jornada_a.iloc[0]['Salida']
-                            tot_a = jornada_a.iloc[0]['Total Horas']
-                            st.info(f"⏱️ **Jornada:** {ing_a} a {sal_a} ({tot_a} hrs)")
+                        if not df_movilidades_raw.empty:
+                            jornada_a = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'].astype(str).str.strip() == str(mov_a))]
+                            if not jornada_a.empty:
+                                ing_a = jornada_a.iloc[0]['Ingreso']
+                                sal_a = jornada_a.iloc[0]['Salida']
+                                tot_a = jornada_a.iloc[0]['Total Horas']
+                                st.info(f"⏱️ **Jornada:** {ing_a} a {sal_a} ({tot_a} hrs)")
 
                         st.metric("Rutas Programadas", len(df_mov_a))
 
@@ -450,13 +454,13 @@ if datos_cargados:
                     if mov_b:
                         df_mov_b = df_dia_base[df_dia_base[col_mov].astype(str).str.strip() == mov_b]
                         
-                        # Buscar info de jornada
-                        jornada_b = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'] == str(mov_b))]
-                        if not jornada_b.empty:
-                            ing_b = jornada_b.iloc[0]['Ingreso']
-                            sal_b = jornada_b.iloc[0]['Salida']
-                            tot_b = jornada_b.iloc[0]['Total Horas']
-                            st.info(f"⏱️ **Jornada:** {ing_b} a {sal_b} ({tot_b} hrs)")
+                        if not df_movilidades_raw.empty:
+                            jornada_b = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'].astype(str).str.strip() == str(mov_b))]
+                            if not jornada_b.empty:
+                                ing_b = jornada_b.iloc[0]['Ingreso']
+                                sal_b = jornada_b.iloc[0]['Salida']
+                                tot_b = jornada_b.iloc[0]['Total Horas']
+                                st.info(f"⏱️ **Jornada:** {ing_b} a {sal_b} ({tot_b} hrs)")
 
                         st.metric("Rutas Programadas", len(df_mov_b))
 
