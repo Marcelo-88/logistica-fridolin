@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import unicodedata
+import google.generativeai as genai
 
 # ==========================================
 # 1. CONFIGURACIÓN Y PALETA DE COLOR FRIDOLIN
@@ -425,7 +426,8 @@ if datos_cargados:
             "🎴 1. Tarjetas de Ruta y Horarios",
             "⚖️ 2. Comparador de Movilidades",
             "⏱️ 3. Jornada de Movilidades",
-            "🗺️ 4. Mapa de Sucursales"
+            "🗺️ 4. Mapa de Sucursales",
+            "🤖 5. Asistente & Optimizador IA"
         ]
     )
 
@@ -755,3 +757,95 @@ if datos_cargados:
             </iframe>
         """
         st.components.v1.html(html_iframe, height=620)
+
+    # ----------------------------------------------------
+    # VISTA 5: ASISTENTE & OPTIMIZADOR IA (NUEVA PESTAÑA)
+    # ----------------------------------------------------
+    elif menu_opcion == "🤖 5. Asistente & Optimizador IA":
+        st.title("🤖 Asistente Logístico Inteligente & Optimizador")
+        st.caption("Aprovecha la Inteligencia Artificial para analizar rutas, optimizar la secuencia de entrega y resolver dudas de operación.")
+        st.divider()
+
+        # Gestión de clave API Gemini
+        api_key = st.secrets.get("GEMINI_API_KEY", "")
+        if not api_key:
+            api_key = st.text_input("🔑 Ingrese su API Key de Google Gemini para activar las funciones de IA:", type="password")
+
+        if not api_key:
+            st.warning("⚠️ Se requiere una API Key de Google Gemini válida para usar este módulo. Puedes configurarla en `.streamlit/secrets.toml` con el nombre `GEMINI_API_KEY` o ingresarla arriba.")
+        else:
+            try:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+
+                tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
+
+                with tab_opt:
+                    st.subheader("💡 Diagnóstico y Optimización de Recorrido")
+                    col_ia1, col_ia2 = st.columns(2)
+                    
+                    with col_ia1:
+                        dia_ia = st.selectbox("📅 Día a analizar:", options=dias_disponibles, key="dia_ia")
+                    with col_ia2:
+                        movs_num = sorted([m for m in df_rutas_raw[col_mov].dropna().astype(str).str.strip().unique() if m in ['1','2','3','4','5','6','7','8','9','10']])
+                        mov_ia = st.selectbox("🚛 Movilidad a analizar:", options=[f"Movilidad {m}" for m in movs_num], key="mov_ia")
+
+                    num_mov_ia = mov_ia.replace("Movilidad ", "").strip()
+                    df_rutas_ia = df_rutas_raw[(df_rutas_raw[col_dia] == dia_ia) & (df_rutas_raw[col_mov].astype(str).str.strip() == num_mov_ia)]
+
+                    if df_rutas_ia.empty:
+                        st.info(f"No hay rutas programadas para {mov_ia} el día {dia_ia}.")
+                    else:
+                        st.write(f"**Rutas encontradas:** {len(df_rutas_ia)}")
+                        if st.button("🪄 Generar Recomendación de Optimización con IA", use_container_width=True):
+                            with st.spinner("Analizando secuencia, tiempos y distribución con IA..."):
+                                prompt_opt = f"""
+                                Eres un experto en logística urbana y optimización de rutas para la empresa pastelera Fridolin en Santa Cruz, Bolivia.
+                                Analiza la siguiente programación de despachos para el día {dia_ia} en la {mov_ia}:
+
+                                DATOS DE LAS SALIDAS DE LA MOVILIDAD:
+                                {df_rutas_ia.to_string()}
+
+                                Por favor provee:
+                                1. Un análisis crítico del horario de salida y retorno estimado.
+                                2. Evaluación de la secuencia de paradas de sucursales (¿Es eficiente el orden propuesto?).
+                                3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
+                                Responde en un tono profesional, claro y directo, usando viñetas.
+                                """
+                                response = model.generate_content(prompt_opt)
+                                st.markdown("---")
+                                st.markdown("### 📋 Recomendación Generada:")
+                                st.markdown(response.text)
+
+                with tab_chat:
+                    st.subheader("💬 Consulta Rápida a la Operación")
+                    st.caption("Realiza cualquier pregunta sobre los datos cargados de rutas, horarios o movilidades.")
+
+                    query_ia = st.text_area("Pregunta sobre la logística:", placeholder="Ej: ¿Qué movilidades tienen turnos de madrugada el día Lunes y qué sucursales atienden?")
+
+                    if st.button("🔍 Consultar IA", use_container_width=True):
+                        if not query_ia.strip():
+                            st.warning("Escribe una consulta antes de enviar.")
+                        else:
+                            with st.spinner("Consultando con IA..."):
+                                prompt_chat = f"""
+                                Eres el asistente logístico inteligente de la pastelería Fridolin.
+                                Tienes acceso a los siguientes datos actuales del sistema:
+
+                                TABLA DE RUTAS Y DESPACHOS:
+                                {df_rutas_raw.to_string()}
+
+                                TABLA DE JORNADAS Y TURNOS:
+                                {df_movilidades_raw.to_string()}
+
+                                Pregunta del usuario: {query_ia}
+
+                                Responde basándote estrictamente en los datos provistos arriba.
+                                """
+                                response_chat = model.generate_content(prompt_chat)
+                                st.markdown("---")
+                                st.markdown("### 🤖 Respuesta del Asistente:")
+                                st.markdown(response_chat.text)
+
+            except Exception as e_ia:
+                st.error(f"Error al conectar con el servicio de IA: {e_ia}")
