@@ -109,12 +109,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Función auxiliar para saber si una hora es antes de las 07:00 AM
+# Función auxiliar para determinar si una hora es antes de las 07:00 AM
 def es_salida_madrugada(hora_str):
     if not hora_str or hora_str == "Sin especificar":
         return False
     try:
-        # Intentar parsear formatos habituales (ej: 04:00, 4:00, 22:00)
         hora_clean = hora_str.strip()
         partes = hora_clean.split(":")
         hora_num = int(partes[0])
@@ -208,8 +207,9 @@ if datos_cargados:
 
     col_dia = next((c for c in df_rutas_raw.columns if 'Dí' in c or 'Di' in c or 'dí' in c), None)
     col_cat = next((c for c in df_rutas_raw.columns if 'Cat' in c or 'cat' in c), None)
+    col_mov = next((c for c in df_rutas_raw.columns if 'Movilidad' in c), None)
 
-    # Filtro de Días
+    # 1. Filtro de Días
     if col_dia and col_dia in df_rutas_raw.columns:
         dias_disponibles = [d for d in df_rutas_raw[col_dia].unique() if d and d != 'nan']
         dias_seleccionados = st.sidebar.multiselect(
@@ -222,7 +222,7 @@ if datos_cargados:
             if not df_mov_filtrado.empty:
                 df_mov_filtrado = df_mov_filtrado[df_mov_filtrado['Día'].isin(dias_seleccionados)]
 
-    # Filtro Categorías
+    # 2. Filtro Categorías
     if col_cat and col_cat in df_rutas_raw.columns:
         cats_disponibles = [c for c in df_rutas_raw[col_cat].unique() if c and c != 'nan']
         cats_seleccionadas = st.sidebar.multiselect(
@@ -233,7 +233,35 @@ if datos_cargados:
         if cats_seleccionadas:
             df_filtrado = df_filtrado[df_filtrado[col_cat].isin(cats_seleccionadas)]
 
-    # Buscador rápido por sucursal
+    # 3. FILTRO POR HORARIO DE SALIDA (NUEVO)
+    filtro_horario = st.sidebar.selectbox(
+        "⏰ Horario de Salida:",
+        options=["Todas las rutas", "🌙 Madrugada (Antes de 07:00 AM)", "☀️ Mañana / Día (07:00 AM o más)"]
+    )
+
+    # Lógica de cruce para filtrar por horario
+    def obtener_hora_ingreso(row):
+        dia = row.get(col_dia, '')
+        mov = str(row.get(col_mov, ''))
+        if mov and not df_movilidades_raw.empty:
+            match = df_movilidades_raw[(df_movilidades_raw['Día'] == dia) & (df_movilidades_raw['Num_Mov'] == mov)]
+            if not match.empty:
+                return match.iloc[0]['Ingreso']
+        return "Sin especificar"
+
+    if filtro_horario != "Todas las rutas":
+        # Filtrar df_filtrado (Rutas)
+        df_filtrado['temp_ingreso'] = df_filtrado.apply(obtener_hora_ingreso, axis=1)
+        if filtro_horario == "🌙 Madrugada (Antes de 07:00 AM)":
+            df_filtrado = df_filtrado[df_filtrado['temp_ingreso'].apply(es_salida_madrugada)]
+            if not df_mov_filtrado.empty:
+                df_mov_filtrado = df_mov_filtrado[df_mov_filtrado['Ingreso'].apply(es_salida_madrugada)]
+        else:
+            df_filtrado = df_filtrado[~df_filtrado['temp_ingreso'].apply(es_salida_madrugada)]
+            if not df_mov_filtrado.empty:
+                df_mov_filtrado = df_mov_filtrado[~df_mov_filtrado['Ingreso'].apply(es_salida_madrugada)]
+
+    # 4. Buscador rápido por sucursal
     busqueda = st.sidebar.text_input("🔍 Buscar Sucursal:", placeholder="Ej. Hipermaxi, Urubó...")
     if busqueda:
         mask = df_filtrado.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)
@@ -269,7 +297,6 @@ if datos_cargados:
         st.divider()
 
         cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in c]
-        col_mov = next((c for c in df_filtrado.columns if 'Movilidad' in c), None)
         col_frec = next((c for c in df_filtrado.columns if 'Frec' in c or 'frec' in c), None)
         col_com = next((c for c in df_filtrado.columns if 'Comentario' in c), None)
 
@@ -361,7 +388,7 @@ if datos_cargados:
                         st.metric("Movilidades en Servicio", len(df_dia))
                         st.info(f"Programación de salidas y retornos para el **{dia}**.")
         else:
-            st.warning("No hay datos de movilidades para los días filtrados.")
+            st.warning("No hay datos de movilidades que coincidan con los filtros seleccionados.")
 
     # ----------------------------------------------------
     # VISTA 3: MAPA DE SUCURSALES (GOOGLE MY MAPS)
