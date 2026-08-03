@@ -181,7 +181,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Helper para normalizar nombres de días
+# Normalizador de días
 def normalizar_dia(dia_str):
     if not dia_str or pd.isna(dia_str):
         return ""
@@ -213,7 +213,7 @@ def es_salida_madrugada(hora_str):
     except Exception:
         return False
 
-# Convierte texto de horas tipo "12:15:00 hrs" o "7:45" a horas decimales (float)
+# Convierte texto de horas tipo "12:15:00 hrs", "7:40:00" o "7:40" a horas decimales (float)
 def parse_horas_a_decimal(cadena_horas):
     if not cadena_horas or pd.isna(cadena_horas):
         return 0.0
@@ -225,6 +225,17 @@ def parse_horas_a_decimal(cadena_horas):
         return h + (m / 60.0)
     except Exception:
         return 0.0
+
+# Formatea un flotante de horas a string (ej. 7.666 -> "7:40:00")
+def decimal_a_horas_str(horas_dec):
+    if horas_dec <= 0:
+        return "0:00:00"
+    h = int(horas_dec)
+    m = int(round((horas_dec - h) * 60))
+    if m == 60:
+        h += 1
+        m = 0
+    return f"{h}:{m:02d}:00"
 
 # ==========================================
 # 2. CARGA Y LIMPIEZA DE DATOS
@@ -271,12 +282,11 @@ def cargar_datos_logistica():
             total = str(df_raw.iloc[idx, 19]).strip()
 
             if mov in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']:
-                # Re-asignación explícita para Movilidad 1: El turno que entra Domingo 22pm se asigna operativamente a la jornada del LUNES
                 dia_asignado = dia_actual
-                if mov == '1' and dia_actual == 'Domingo' and es_salida_madrugada(ingreso):
+                
+                # Asignación corregida: Solo mover la entrada de Domingo 22pm a la jornada del LUNES
+                if mov == '1' and dia_actual == 'Domingo' and ingreso.startswith('22:'):
                     dia_asignado = 'Lunes'
-                elif mov == '1' and dia_actual == 'Viernes' and es_salida_madrugada(ingreso):
-                    dia_asignado = 'Sábado'
 
                 bloques_movilidades.append({
                     'Día': dia_asignado,
@@ -328,7 +338,6 @@ if datos_cargados:
     col_h_salida = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['hora_sal', 'salida'])), None)
     col_h_retorno = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['hora_ret', 'retorno'])), None)
 
-    # Búsqueda flexible de jornada
     def obtener_jornada_flexible(df_mov_raw, dia_filtro, num_movidad):
         if df_mov_raw.empty:
             return None
@@ -416,7 +425,7 @@ if datos_cargados:
         ]
     )
 
-# Helper tarjetas individuales Vista 1
+# Renderizador individual
 def renderizar_tarjeta_individual(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales):
     dia = row.get(col_dia, '')
     cat = row.get(col_cat, '')
@@ -458,7 +467,7 @@ def renderizar_tarjeta_individual(row, col_dia, col_cat, col_mov, col_frec, col_
     )
     st.markdown(card_html, unsafe_allow_html=True)
 
-# Helper tarjeta consolidada Vista 2
+# Renderizador comparador
 def renderizar_tarjeta_unica_movilidad(df_mov_rutas, jornada_info, mov_label, dia_nombre, cols_sucursales, col_cat, col_frec, col_com, col_h_salida, col_h_retorno):
     if jornada_info is not None and jornada_info['Ingreso'] != '':
         jornada_html = (
@@ -525,7 +534,7 @@ def renderizar_tarjeta_unica_movilidad(df_mov_rutas, jornada_info, mov_label, di
     )
     st.markdown(tarjeta_general_html, unsafe_allow_html=True)
 
-# Helper Tarjetas Semanales Resumen Vista 3
+# Renderizador Tarjetas Semanales Resumen Vista 3 (Ajustado con Consolidación por Día)
 def renderizar_tarjeta_resumen_semanal_movilidad(df_movilidades_all, num_mov):
     df_unit = df_movilidades_all[df_movilidades_all['Num_Mov'].astype(str).str.strip() == str(num_mov)]
     
@@ -539,17 +548,29 @@ def renderizar_tarjeta_resumen_semanal_movilidad(df_movilidades_all, num_mov):
     total_horas_num = 0.0
 
     for d in dias_semana:
-        row_d = df_unit[df_unit['Día'] == d]
-        if not row_d.empty and row_d.iloc[0]['Ingreso'] != '':
-            hrs_str = row_d.iloc[0]['Total Horas']
-            hrs_dec = parse_horas_a_decimal(hrs_str)
-            total_horas_num += hrs_dec
-            pills_html.append(f'<span class="day-hour-pill"><b>{d[:3]}:</b> {hrs_str}</span>')
+        rows_d = df_unit[df_unit['Día'] == d]
+        
+        # Sumar todas las horas del mismo día (en caso de múltiples turnos)
+        horas_dia_dec = 0.0
+        hrs_str_display = ""
+        
+        if not rows_d.empty:
+            valid_rows = rows_d[rows_d['Ingreso'] != '']
+            if not valid_rows.empty:
+                for _, r in valid_rows.iterrows():
+                    hrs_str = r['Total Horas']
+                    horas_dia_dec += parse_horas_a_decimal(hrs_str)
+                
+                hrs_str_display = decimal_a_horas_str(horas_dia_dec)
+
+        if horas_dia_dec > 0:
+            total_horas_num += horas_dia_dec
+            pills_html.append(f'<span class="day-hour-pill"><b>{d[:3]}:</b> {hrs_str_display}</span>')
         else:
             pills_html.append(f'<span class="day-hour-pill" style="opacity:0.5; background:#f5f5f5;"><b>{d[:3]}:</b> Descanso</span>')
 
     pills_joined = "".join(pills_html)
-    total_formatted = f"{total_horas_num:.2f}".rstrip('0').rstrip('.')
+    total_formatted = decimal_a_horas_str(total_horas_num)
 
     card_html = (
         f'<div class="weekly-summary-card">'
@@ -647,19 +668,17 @@ if datos_cargados:
                         renderizar_tarjeta_unica_movilidad(df_mov_b, jornada_b, mov_b_label, dia_comp, cols_sucursales, col_cat, col_frec, col_com, col_h_salida, col_h_retorno)
 
     # ----------------------------------------------------
-    # VISTA 3: JORNADA Y TURNOS POR MOVILIDAD (NUEVA CON RESUMEN SEMANAL)
+    # VISTA 3: JORNADA Y TURNOS POR MOVILIDAD
     # ----------------------------------------------------
     elif menu_opcion == "⏱️ 3. Jornada de Movilidades":
         st.title("⏱️ Turnos y Horarios por Movilidad")
         st.caption("Programación de choferes, horas acumuladas semanales y detalle de turnos.")
 
-        # --- SECCIÓN 1: TARJETAS INFORMATIVAS RESUMEN DE HORAS SEMANALES ---
         st.subheader("📊 Resumen Horario Semanal por Movilidad")
         
         movs_en_jornadas = sorted(list(df_movilidades_raw['Num_Mov'].unique()), key=lambda x: int(x) if str(x).isdigit() else 99)
 
         if movs_en_jornadas:
-            # Opción de desplegar en grid de 2 columnas
             col_grid1, col_grid2 = st.columns(2)
             for idx, num_m in enumerate(movs_en_jornadas):
                 if idx % 2 == 0:
@@ -671,7 +690,6 @@ if datos_cargados:
 
         st.divider()
 
-        # --- SECCIÓN 2: DETALLE DIARIO POR PESTAÑAS DE DÍA ---
         st.subheader("📅 Programación de Turnos por Día")
 
         if not df_mov_filtrado.empty:
