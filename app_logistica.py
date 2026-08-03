@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # ==========================================
-# 1. CONFIGURACIÓN Y ESTILOS AVANZADOS
+# 1. CONFIGURACIÓN Y ESTILOS
 # ==========================================
 st.set_page_config(
     page_title="Control Logístico | Fridolin",
@@ -11,27 +11,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados
+# Estilos CSS limpios
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     
-    /* Contenedor de Tarjeta de Ruta */
+    /* Contenedor de Tarjeta */
     .route-card {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        padding: 16px;
+        padding: 18px;
         margin-bottom: 16px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-        transition: all 0.2s ease-in-out;
-    }
-    .route-card:hover {
-        border-color: #cbd5e1;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
     }
     
-    /* Badges / Etiquetas */
+    /* Badges */
     .badge-day {
         background-color: #eff6ff;
         color: #1d4ed8;
@@ -64,10 +59,11 @@ st.markdown("""
         font-weight: 700;
         font-size: 0.88rem;
         display: inline-block;
-        margin-top: 6px;
+        margin-top: 8px;
+        margin-bottom: 8px;
     }
     
-    /* Secuencia de Paradas */
+    /* Paradas */
     .stop-chip {
         display: inline-block;
         background-color: #f8fafc;
@@ -87,7 +83,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARGA Y PROCESAMIENTO DE DATOS
+# 2. CARGA DE DATOS
 # ==========================================
 PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h"
 GID_RUTAS = "2020862153"
@@ -158,11 +154,10 @@ except Exception as e:
     datos_cargados = False
 
 # ==========================================
-# 3. FILTROS Y SIDEBAR REDISEÑADO
+# 3. FILTROS Y SIDEBAR
 # ==========================================
 if datos_cargados:
-    st.sidebar.image("https://em-content.zobj.net/source/apple/354/delivery-truck_1f68a.png", width=45)
-    st.sidebar.title("Logística Fridolin")
+    st.sidebar.title("🚚 Logística Fridolin")
     st.sidebar.caption("Panel de Control Operativo 2026")
     st.sidebar.divider()
 
@@ -206,7 +201,6 @@ if datos_cargados:
 
     st.sidebar.divider()
 
-    # MENÚ REDISEÑADO SIN MÉTRICAS
     menu_opcion = st.sidebar.radio(
         "📌 Modo de Vista:",
         [
@@ -222,7 +216,7 @@ if datos_cargados:
 if datos_cargados:
 
     # ----------------------------------------------------
-    # VISTA 1: TARJETAS DE RUTA + HORARIO DE SALIDA / RETORNO
+    # VISTA 1: TARJETAS DE RUTA + HORARIO ESTIMADO
     # ----------------------------------------------------
     if menu_opcion == "🎴 1. Tarjetas de Ruta y Horarios":
         st.title("🚚 Planificación de Rutas y Horarios Estimados")
@@ -249,47 +243,39 @@ if datos_cargados:
             frec = row.get(col_frec, '')
             comentario = row.get(col_com, '')
 
-            # Cruce de hora de salida y retorno desde la tabla de movilidades
+            # Cruce de hora de salida y retorno
             hora_salida = "Sin especificar"
             hora_retorno = "Sin especificar"
 
             if mov and not df_movilidades_raw.empty:
-                # Buscar correspondencia por día y movilidad
                 match = df_movilidades_raw[(df_movilidades_raw['Día'] == dia) & (df_movilidades_raw['Num_Mov'] == str(mov))]
                 if not match.empty:
                     hora_salida = match.iloc[0]['Ingreso']
                     hora_retorno = match.iloc[0]['Salida']
 
-            # Extraer sucursales reales
+            # Extraer sucursales válidas
             paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
 
-            # Renderizado de Tarjeta
-            with st.container():
-                st.markdown(f"""
-                    <div class="route-card">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-                            <div>
-                                <span class="badge-day">📅 {dia}</span>
-                                <span class="badge-cat">📦 {cat}</span>
-                                {f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov else ''}
-                            </div>
-                            <small style="color: #64748b; font-weight: 500;">{frec}</small>
-                        </div>
-                        
-                        <!-- BLOQUE DE HORARIOS DE SALIDA Y RETORNO -->
-                        <div style="margin-bottom: 12px;">
-                            <span class="badge-time">🚀 Salida Planta: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span>
-                        </div>
+            # Construcción de las paradas HTML sin saltos raros
+            html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
 
-                        <!-- SECUENCIA DE PARADAS -->
-                        <div style="margin-top: 8px;">
-                            <strong style="color: #475569; font-size: 0.9rem;">Secuencia de Recorrido:</strong><br>
-                            {' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])}
-                        </div>
-                        
-                        {f'<div style="margin-top: 10px; font-size: 0.85rem; color: #d97706; background-color: #fffbeb; padding: 6px 10px; border-radius: 6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario else ''}
-                    </div>
-                """, unsafe_allow_html=True)
+            # Renderizado seguro de Tarjeta en HTML plano continuo
+            badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov else ''
+            nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#d97706; background-color:#fffbeb; padding:6px 10px; border-radius:6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario else ''
+
+            card_html = (
+                f'<div class="route-card">'
+                f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+                f'<div><span class="badge-day">📅 {dia}</span> <span class="badge-cat">📦 {cat}</span> {badge_mov_html}</div>'
+                f'<small style="color:#64748b; font-weight:500;">{frec}</small>'
+                f'</div>'
+                f'<div><span class="badge-time">🚀 Salida Planta: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
+                f'<div style="margin-top:8px;"><strong style="color:#475569; font-size:0.9rem;">Secuencia de Recorrido:</strong><br>{html_paradas}</div>'
+                f'{nota_html}'
+                f'</div>'
+            )
+
+            st.markdown(card_html, unsafe_allow_html=True)
 
     # ----------------------------------------------------
     # VISTA 2: JORNADA DE MOVILIDADES
@@ -311,17 +297,14 @@ if datos_cargados:
                     
                     with col_left:
                         for _, row in df_dia.iterrows():
-                            st.markdown(f"""
-                                <div style="background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <strong style="color: #1e293b; font-size: 1.05rem;">🚛 {row['Movilidad']}</strong><br>
-                                        <span style="color: #0284c7; font-size: 0.95rem;">🚀 Salida: <b>{row['Ingreso']}</b> &nbsp;|&nbsp; 🏁 Retorno: <b>{row['Salida']}</b></span>
-                                    </div>
-                                    <div style="background-color: #f1f5f9; padding: 6px 12px; border-radius: 8px; font-weight: 700; color: #0f172a;">
-                                        ⏳ {row['Total Horas']} hrs
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                            mov_item_html = (
+                                f'<div style="background-color:#ffffff; border:1px solid #e2e8f0; padding:12px 16px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">'
+                                f'<div><strong style="color:#1e293b; font-size:1.05rem;">🚛 {row["Movilidad"]}</strong><br>'
+                                f'<span style="color:#0284c7; font-size:0.95rem;">🚀 Salida: <b>{row["Ingreso"]}</b> &nbsp;|&nbsp; 🏁 Retorno: <b>{row["Salida"]}</b></span></div>'
+                                f'<div style="background-color:#f1f5f9; padding:6px 12px; border-radius:8px; font-weight:700; color:#0f172a;">⏳ {row["Total Horas"]} hrs</div>'
+                                f'</div>'
+                            )
+                            st.markdown(mov_item_html, unsafe_allow_html=True)
                     
                     with col_right:
                         st.metric("Movilidades en Servicio", len(df_dia))
@@ -330,17 +313,15 @@ if datos_cargados:
             st.warning("No hay datos de movilidades para los días filtrados.")
 
     # ----------------------------------------------------
-    # VISTA 3: MAPA DE SUCURSALES (EMBED GOOGLE MY MAPS)
+    # VISTA 3: MAPA DE SUCURSALES (GOOGLE MY MAPS)
     # ----------------------------------------------------
     elif menu_opcion == "🗺️ 3. Mapa de Sucursales":
         st.title("🗺️ Mapa Geográfico de Sucursales")
-        st.caption("Ubicación interactiva con nombres, lista desplegable y cobertura de Montero y Santa Cruz.")
+        st.caption("Ubicación interactiva con lista lateral de sucursales y cobertura de Montero y Santa Cruz.")
         st.divider()
 
-        # Enlace directo al mapa original de Google My Maps
         mapa_url = "https://www.google.com/maps/d/u/0/embed?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA&ehbc=2E312F"
 
-        # Contenedor iframe para renderizar el mapa idéntico al screenshot
         st.components.v1.iframe(
             src=mapa_url,
             width=1100,
@@ -348,4 +329,4 @@ if datos_cargados:
             scrolling=True
         )
 
-        st.caption("💡 *Puedes hacer zoom out para ver la sucursal de Montero o pulsar en la barra lateral izquierda del mapa para filtrar por sucursal.*")
+        st.caption("💡 *Puedes explorar la lista de sucursales en la barra lateral izquierda del mapa.*")
