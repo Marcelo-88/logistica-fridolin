@@ -110,7 +110,7 @@ st.markdown("""
 
 # Función para determinar si una hora pertenece al turno de Madrugada/Noche (< 07:00 AM o >= 22:00)
 def es_salida_madrugada(hora_str):
-    if not hora_str or hora_str in ["Sin especificar", "nan", "None", ""]:
+    if not hora_str or str(hora_str).strip() in ["Sin especificar", "nan", "None", ""]:
         return False
     try:
         hora_clean = str(hora_str).strip()
@@ -136,7 +136,7 @@ def cargar_datos_logistica():
     df_raw = pd.read_csv(URL_RUTAS, header=None)
     
     # --- RUTAS DE DISTRIBUCIÓN ---
-    # Tomamos desde Col A hasta Col M (0 a 13)
+    # Tomamos desde Col A hasta Col M (0 a 12 de índice)
     df_rutas = df_raw.iloc[:, :13].copy()
     df_rutas.columns = df_rutas.iloc[0]
     df_rutas = df_rutas[1:].reset_index(drop=True).dropna(how="all")
@@ -236,7 +236,7 @@ if datos_cargados:
         if cats_seleccionadas:
             df_filtrado = df_filtrado[df_filtrado[col_cat].isin(cats_seleccionadas)]
 
-    # 3. FILTRO POR HORARIO DE SALIDA (Aplica directamente a Columna K de Rutas)
+    # 3. FILTRO POR HORARIO DE SALIDA (Aplica a Columnas K y L)
     filtro_horario = st.sidebar.selectbox(
         "⏰ Horario de Salida:",
         options=["Todas las rutas", "🌙 Madrugada / Noche (22:00 - 07:00 AM)", "☀️ Mañana / Día (07:00 AM - 21:59)"]
@@ -301,11 +301,10 @@ if datos_cargados:
             frec = row.get(col_frec, '')
             comentario = str(row.get(col_com, '')).strip()
 
-            # Obtener directamente de la fila las horas de salida (Col. K) y retorno (Col. L)
+            # Extraer directamente de las columnas K y L
             hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
             hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
 
-            # Validar valores vacíos
             if not hora_salida or hora_salida in ['nan', 'None']:
                 hora_salida = "Sin especificar"
             if not hora_retorno or hora_retorno in ['nan', 'None']:
@@ -314,15 +313,11 @@ if datos_cargados:
             # Determinar si es Madrugada/Noche (< 7:00 AM o >= 22:00)
             es_madrugada = es_salida_madrugada(hora_salida)
 
-            # Estilos según el horario
             card_class = "route-card-madrugada" if es_madrugada else "route-card"
             badge_time_class = "badge-time-madrugada" if es_madrugada else "badge-time"
             icono_salida = "🌙 Salida Planta" if es_madrugada else "🚀 Salida Planta"
 
-            # Extraer sucursales válidas
             paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
-
-            # Construcción HTML de las paradas
             html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
 
             badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov and mov not in ['nan', 'None'] else ''
@@ -382,20 +377,25 @@ if datos_cargados:
             st.warning("No hay datos de movilidades que coincidan con los filtros seleccionados.")
 
     # ----------------------------------------------------
-    # VISTA 3: MAPA DE SUCURSALES (GOOGLE MY MAPS)
+    # VISTA 3: MAPA DE SUCURSALES (GOOGLE MY MAPS FIX)
     # ----------------------------------------------------
     elif menu_opcion == "🗺️ 3. Mapa de Sucursales":
         st.title("🗺️ Mapa Geográfico de Sucursales")
-        st.caption("Ubicación interactiva con lista lateral de sucursales y cobertura de Montero y Santa Cruz.")
+        st.caption("Ubicación interactiva con cobertura de Montero y Santa Cruz.")
         st.divider()
 
-        mapa_url = "https://www.google.com/maps/d/u/0/embed?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA&ehbc=2E312F"
+        mapa_embed_url = "https://www.google.com/maps/d/viewer?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA"
+        mapa_directo_url = "https://www.google.com/maps/d/u/0/viewer?mid=1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA"
+
+        col_map1, col_map2 = st.columns([3, 1])
+        with col_map1:
+            st.info("💡 Puedes interactuar directamente con el mapa aquí abajo:")
+        with col_map2:
+            st.link_button("↗️ Abrir en Google Maps", mapa_directo_url, use_container_width=True)
 
         st.components.v1.iframe(
-            src=mapa_url,
+            src=mapa_embed_url,
             width=1100,
-            height=650,
+            height=600,
             scrolling=True
         )
-
-        st.caption("💡 *Puedes explorar la lista de sucursales en la barra lateral izquierda del mapa.*")
