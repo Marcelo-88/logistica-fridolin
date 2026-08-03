@@ -19,41 +19,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. ENLACE PÚBLICO DE GOOGLE SHEETS
+# 2. ENLACES DIRECTOS POR PESTAÑA (GID)
 # ==========================================
-URL_RUTAS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h/pub?sheet=Rutas_Logistica&output=csv"
-URL_SUCURSALES = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h/pub?sheet=Sucursales&output=csv"
+SHEET_ID = "1vMrjVjM7575QlbgM19mpbQhrUxnC183hH3MDjC8AjfM"
+
+# URL exacta para la pestaña Rutas_Logistica (gid=2020862153)
+URL_RUTAS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=2020862153"
+
+# URL exacta para la pestaña Sucursales (gid=0)
+URL_SUCURSALES = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 
 @st.cache_data(ttl=60)
 def cargar_datos_logistica():
+    # Cargar Rutas
     df_rutas = pd.read_csv(URL_RUTAS)
-    
-    # Limpiar espacios invisibles en nombres de columnas
     df_rutas.columns = df_rutas.columns.str.strip()
-    
-    # Intentar cargar sucursales si existe
+    df_rutas = df_rutas.dropna(how="all")
+
+    # Cargar Sucursales
     try:
         df_sucursales = pd.read_csv(URL_SUCURSALES)
         df_sucursales.columns = df_sucursales.columns.str.strip()
+        df_sucursales = df_sucursales.dropna(how="all")
     except Exception:
         df_sucursales = pd.DataFrame()
 
-    # --- Limpieza Rutas ---
-    df_rutas = df_rutas.dropna(how="all")
-    
-    # Identificar columna Día
-    col_dia = next((c for c in df_rutas.columns if 'Dí' in c or 'Di' in c or 'dí' in c or 'di' in c), None)
-    col_cat = next((c for c in df_rutas.columns if 'Cat' in c or 'cat' in c), None)
-    
     # Limpieza de textos
     for col in df_rutas.columns:
         df_rutas[col] = df_rutas[col].astype(str).str.strip().replace({'nan': '', 'None': ''})
 
-    return df_rutas, df_sucursales, col_dia, col_cat
+    return df_rutas, df_sucursales
 
 # Cargar Datos
 try:
-    df_rutas_raw, df_sucursales_raw, col_dia, col_cat = cargar_datos_logistica()
+    df_rutas_raw, df_sucursales_raw = cargar_datos_logistica()
     datos_cargados = True
 except Exception as e:
     st.error(f"⚠️ Error al procesar los datos de Google Sheets: {e}")
@@ -82,19 +81,19 @@ if datos_cargados:
 
     df_filtrado = df_rutas_raw.copy()
 
-    # Filtro Día seguro
-    if col_dia and col_dia in df_rutas_raw.columns:
-        dias_unicos = ["Todos"] + sorted([d for d in df_rutas_raw[col_dia].unique() if d])
+    # Filtro Día
+    if 'Día' in df_rutas_raw.columns:
+        dias_unicos = ["Todos"] + sorted([d for d in df_rutas_raw['Día'].unique() if d])
         filtro_dia = st.sidebar.selectbox("Filtrar por Día:", dias_unicos)
         if filtro_dia != "Todos":
-            df_filtrado = df_filtrado[df_filtrado[col_dia] == filtro_dia]
+            df_filtrado = df_filtrado[df_filtrado['Día'] == filtro_dia]
 
-    # Filtro Categoría seguro
-    if col_cat and col_cat in df_rutas_raw.columns:
-        cats_unicas = ["Todas"] + sorted([c for c in df_rutas_raw[col_cat].unique() if c])
+    # Filtro Categoría
+    if 'Categoría' in df_rutas_raw.columns:
+        cats_unicas = ["Todas"] + sorted([c for c in df_rutas_raw['Categoría'].unique() if c])
         filtro_cat = st.sidebar.selectbox("Filtrar por Categoría:", cats_unicas)
         if filtro_cat != "Todas":
-            df_filtrado = df_filtrado[df_filtrado[col_cat] == filtro_cat]
+            df_filtrado = df_filtrado[df_filtrado['Categoría'] == filtro_cat]
 
 # ==========================================
 # 4. CONTENIDO PRINCIPAL
@@ -105,10 +104,10 @@ if datos_cargados:
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Registros", f"{len(df_filtrado)}")
     
-    cat_count = df_filtrado[col_cat].nunique() if col_cat and col_cat in df_filtrado.columns else 0
+    cat_count = df_filtrado['Categoría'].nunique() if 'Categoría' in df_filtrado.columns else 0
     col2.metric("Categorías Activas", f"{cat_count}")
     
-    dia_count = df_filtrado[col_dia].nunique() if col_dia and col_dia in df_filtrado.columns else 0
+    dia_count = df_filtrado['Día'].nunique() if 'Día' in df_filtrado.columns else 0
     col3.metric("Días Operativos", f"{dia_count}")
 
     st.divider()
@@ -123,10 +122,12 @@ if datos_cargados:
 
     elif menu_opcion == "📊 2. Resumen por Categoría y Frecuencia":
         st.subheader("📊 Distribución de Rutas por Categoría")
-        if col_cat and col_cat in df_filtrado.columns:
-            st.bar_chart(df_filtrado[col_cat].value_counts())
-        else:
-            st.info("No se encontró la columna Categoría para graficar.")
+        if 'Categoría' in df_filtrado.columns:
+            st.bar_chart(df_filtrado['Categoría'].value_counts())
+        
+        if 'Frecuencia' in df_filtrado.columns:
+            st.subheader("📌 Frecuencia de Salida")
+            st.dataframe(df_filtrado['Frecuencia'].value_counts().reset_index(), use_container_width=True)
 
     elif menu_opcion == "🏢 3. Directorio de Sucursales":
         st.subheader("🏢 Base de Datos de Sucursales")
