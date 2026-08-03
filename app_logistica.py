@@ -235,7 +235,6 @@ except Exception as e:
 # 3. FILTROS Y SIDEBAR (ESTILO FRIDOLIN)
 # ==========================================
 if datos_cargados:
-    # Carga del Logo oficial o Título alternativo
     try:
         st.sidebar.image("Fridolin_logo.jpg", use_container_width=True)
     except Exception:
@@ -307,10 +306,52 @@ if datos_cargados:
         "📌 Modo de Vista:",
         [
             "🎴 1. Tarjetas de Ruta y Horarios",
-            "⏱️ 2. Jornada de Movilidades",
-            "🗺️ 3. Mapa de Sucursales"
+            "⚖️ 2. Comparador de Movilidades",
+            "⏱️ 3. Jornada de Movilidades",
+            "🗺️ 4. Mapa de Sucursales"
         ]
     )
+
+# Función auxiliar para renderizar una tarjeta de ruta
+def renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales):
+    dia = row.get(col_dia, '')
+    cat = row.get(col_cat, '')
+    mov = row.get(col_mov, '')
+    frec = row.get(col_frec, '')
+    comentario = str(row.get(col_com, '')).strip()
+
+    hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
+    hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
+
+    if not hora_salida or hora_salida in ['nan', 'None']:
+        hora_salida = "Sin especificar"
+    if not hora_retorno or hora_retorno in ['nan', 'None']:
+        hora_retorno = "Sin especificar"
+
+    es_madrugada = es_salida_madrugada(hora_salida)
+
+    card_class = "route-card-madrugada" if es_madrugada else "route-card"
+    badge_time_class = "badge-time-madrugada" if es_madrugada else "badge-time"
+    icono_salida = "🌙 Salida Planta" if es_madrugada else "🚀 Salida Planta"
+
+    paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
+    html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
+
+    badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov and mov not in ['nan', 'None'] else ''
+    nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#8a6411; background-color:#fef7e7; padding:6px 12px; border-radius:6px; border:1px solid #f5e4b8;">💡 <b>Nota:</b> {comentario}</div>' if comentario and comentario not in ['nan', 'None'] else ''
+
+    card_html = (
+        f'<div class="{card_class}">'
+        f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+        f'<div><span class="badge-day">📅 {dia}</span> <span class="badge-cat">📦 {cat}</span> {badge_mov_html}</div>'
+        f'<small style="color:#786565; font-weight:500;">{frec}</small>'
+        f'</div>'
+        f'<div><span class="{badge_time_class}">{icono_salida}: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
+        f'<div style="margin-top:8px;"><strong style="color:#523e3e; font-size:0.9rem;">Secuencia de Recorrido:</strong><br>{html_paradas}</div>'
+        f'{nota_html}'
+        f'</div>'
+    )
+    st.markdown(card_html, unsafe_allow_html=True)
 
 # ==========================================
 # 4. VISTAS INTERACTIVAS
@@ -318,7 +359,7 @@ if datos_cargados:
 if datos_cargados:
 
     # ----------------------------------------------------
-    # VISTA 1: TARJETAS DE RUTA Y HORARIOS (ESTILO FRIDOLIN)
+    # VISTA 1: TARJETAS DE RUTA Y HORARIOS
     # ----------------------------------------------------
     if menu_opcion == "🎴 1. Tarjetas de Ruta y Horarios":
         st.title("🚚 Planificación de Rutas y Horarios")
@@ -338,52 +379,85 @@ if datos_cargados:
             st.info("No se encontraron rutas para los filtros seleccionados.")
 
         for idx, row in df_filtrado.iterrows():
-            dia = row.get(col_dia, '')
-            cat = row.get(col_cat, '')
-            mov = row.get(col_mov, '')
-            frec = row.get(col_frec, '')
-            comentario = str(row.get(col_com, '')).strip()
-
-            # Extracción desde Columnas K y L
-            hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
-            hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
-
-            if not hora_salida or hora_salida in ['nan', 'None']:
-                hora_salida = "Sin especificar"
-            if not hora_retorno or hora_retorno in ['nan', 'None']:
-                hora_retorno = "Sin especificar"
-
-            # Madrugada / Noche (< 7:00 AM o >= 22:00)
-            es_madrugada = es_salida_madrugada(hora_salida)
-
-            card_class = "route-card-madrugada" if es_madrugada else "route-card"
-            badge_time_class = "badge-time-madrugada" if es_madrugada else "badge-time"
-            icono_salida = "🌙 Salida Planta" if es_madrugada else "🚀 Salida Planta"
-
-            paradas = [str(row[c]).strip() for c in cols_sucursales if str(row[c]).strip() not in ['', 'nan', 'None']]
-            html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
-
-            badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov and mov not in ['nan', 'None'] else ''
-            nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#8a6411; background-color:#fef7e7; padding:6px 12px; border-radius:6px; border:1px solid #f5e4b8;">💡 <b>Nota:</b> {comentario}</div>' if comentario and comentario not in ['nan', 'None'] else ''
-
-            card_html = (
-                f'<div class="{card_class}">'
-                f'<div style="display:flex; justify-content:space-between; align-items:center;">'
-                f'<div><span class="badge-day">📅 {dia}</span> <span class="badge-cat">📦 {cat}</span> {badge_mov_html}</div>'
-                f'<small style="color:#786565; font-weight:500;">{frec}</small>'
-                f'</div>'
-                f'<div><span class="{badge_time_class}">{icono_salida}: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
-                f'<div style="margin-top:8px;"><strong style="color:#523e3e; font-size:0.9rem;">Secuencia de Recorrido:</strong><br>{html_paradas}</div>'
-                f'{nota_html}'
-                f'</div>'
-            )
-
-            st.markdown(card_html, unsafe_allow_html=True)
+            renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
 
     # ----------------------------------------------------
-    # VISTA 2: JORNADA DE MOVILIDADES
+    # VISTA 2: COMPARADOR DE MOVILIDADES (NUEVA FUNCIÓN)
     # ----------------------------------------------------
-    elif menu_opcion == "⏱️ 2. Jornada de Movilidades":
+    elif menu_opcion == "⚖️ 2. Comparador de Movilidades":
+        st.title("⚖️ Comparador Lado a Lado de Movilidades")
+        st.caption("Compara el itinerario de dos unidades para evaluar fusión, reasignación o combinación de rutas.")
+
+        cols_sucursales = [c for c in df_rutas_raw.columns if 'Sucursal' in c]
+        col_frec = next((c for c in df_rutas_raw.columns if 'Frec' in c or 'frec' in c), None)
+        col_com = next((c for c in df_rutas_raw.columns if 'Comentario' in c), None)
+
+        # 1. Selección de Día
+        dias_lista = [d for d in df_rutas_raw[col_dia].unique() if d and str(d) != 'nan'] if col_dia else []
+        dia_comp = st.selectbox("📅 Selecciona el Día a Analizar:", options=dias_lista)
+
+        # Filtrar rutas por día seleccionado
+        df_dia_base = df_rutas_raw[df_rutas_raw[col_dia] == dia_comp] if col_dia else df_rutas_raw
+
+        # Lista de movilidades disponibles en ese día
+        movilidades_disponibles = sorted([m for m in df_dia_base[col_mov].unique() if m and str(m) not in ['nan', 'None', '']]) if col_mov else []
+
+        st.divider()
+
+        col_left, col_right = st.columns(2)
+
+        # --- COLUMNA IZQUIERDA: MOVILIDAD A ---
+        with col_left:
+            st.subheader("🚛 Movilidad A")
+            mov_a = st.selectbox("Selecciona Movilidad A:", options=movilidades_disponibles, index=0 if len(movilidades_disponibles)>0 else 0, key="mov_a")
+            
+            df_mov_a = df_dia_base[df_dia_base[col_mov] == mov_a]
+            
+            # Buscar info de jornada
+            jornada_a = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'] == str(mov_a))]
+            if not jornada_a.empty:
+                ing_a = jornada_a.iloc[0]['Ingreso']
+                sal_a = jornada_a.iloc[0]['Salida']
+                tot_a = jornada_a.iloc[0]['Total Horas']
+                st.info(f"⏱️ **Jornada:** {ing_a} a {sal_a} ({tot_a} hrs)")
+
+            st.metric("Rutas Programadas", len(df_mov_a))
+
+            if len(df_mov_a) == 0:
+                st.warning(f"No hay rutas registradas para Movilidad {mov_a} el {dia_comp}.")
+            else:
+                for _, row in df_mov_a.iterrows():
+                    renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
+
+        # --- COLUMNA DERECHA: MOVILIDAD B ---
+        with col_right:
+            st.subheader("🚛 Movilidad B")
+            # Por defecto seleccionar la segunda movilidad si existe
+            idx_b = 1 if len(movilidades_disponibles) > 1 else 0
+            mov_b = st.selectbox("Selecciona Movilidad B:", options=movilidades_disponibles, index=idx_b, key="mov_b")
+            
+            df_mov_b = df_dia_base[df_dia_base[col_mov] == mov_b]
+            
+            # Buscar info de jornada
+            jornada_b = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'] == str(mov_b))]
+            if not jornada_b.empty:
+                ing_b = jornada_b.iloc[0]['Ingreso']
+                sal_b = jornada_b.iloc[0]['Salida']
+                tot_b = jornada_b.iloc[0]['Total Horas']
+                st.info(f"⏱️ **Jornada:** {ing_b} a {sal_b} ({tot_b} hrs)")
+
+            st.metric("Rutas Programadas", len(df_mov_b))
+
+            if len(df_mov_b) == 0:
+                st.warning(f"No hay rutas registradas para Movilidad {mov_b} el {dia_comp}.")
+            else:
+                for _, row in df_mov_b.iterrows():
+                    renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
+
+    # ----------------------------------------------------
+    # VISTA 3: JORNADA DE MOVILIDADES
+    # ----------------------------------------------------
+    elif menu_opcion == "⏱️ 3. Jornada de Movilidades":
         st.title("⏱️ Turnos y Horarios por Movilidad")
         st.caption("Programación de choferes y unidades de transporte.")
         st.divider()
@@ -420,9 +494,9 @@ if datos_cargados:
             st.warning("No hay datos de movilidades disponibles para los filtros actuales.")
 
     # ----------------------------------------------------
-    # VISTA 3: MAPA DE SUCURSALES
+    # VISTA 4: MAPA DE SUCURSALES
     # ----------------------------------------------------
-    elif menu_opcion == "🗺️ 3. Mapa de Sucursales":
+    elif menu_opcion == "🗺️ 4. Mapa de Sucursales":
         st.title("🗺️ Mapa Geográfico de Sucursales")
         st.caption("Ubicación e interacción espacial con la red de sucursales Fridolin.")
         st.divider()
