@@ -19,16 +19,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARGA DE DATOS POR GID EXACTO
+# 2. ENLACES CORRECTOS DE PUBLICACIÓN WEB (2PACX)
 # ==========================================
-SHEET_ID = "1vMrjVjM7575QlbgM19mpbQhrUxnC183hH3MDjC8AjfM"
+PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h"
 
-# GIDs exactos extraídos de tu Google Sheet
+# Identificadores exactos de pestañas (gids)
 GID_RUTAS = "2020862153"
 GID_SUCURSALES = "51773579"
 
-URL_RUTAS = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={GID_RUTAS}"
-URL_SUCURSALES = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={GID_SUCURSALES}"
+# Sintaxis oficial de exportación CSV para enlaces "2PACX"
+URL_RUTAS = f"{PUB_BASE}/pub?single=true&gid={GID_RUTAS}&output=csv"
+URL_SUCURSALES = f"{PUB_BASE}/pub?single=true&gid={GID_SUCURSALES}&output=csv"
 
 @st.cache_data(ttl=60)
 def cargar_datos_logistica():
@@ -45,9 +46,9 @@ def cargar_datos_logistica():
     except Exception:
         df_sucursales = pd.DataFrame()
 
-    # Limpieza de valores vacíos y formato texto
+    # Limpieza de textos
     for col in df_rutas.columns:
-        df_rutas[col] = df_rutas[col].astype(str).str.strip().replace({'nan': '', 'None': '', 'Unnamed: 6': '', 'Unnamed: 7': ''})
+        df_rutas[col] = df_rutas[col].astype(str).str.strip().replace({'nan': '', 'None': ''})
 
     return df_rutas, df_sucursales
 
@@ -82,19 +83,19 @@ if datos_cargados:
 
     df_filtrado = df_rutas_raw.copy()
 
-    # Detectar columna Día y Categoría
+    # Detectar columnas Día y Categoría de forma segura
     col_dia = next((c for c in df_rutas_raw.columns if 'Dí' in c or 'Di' in c or 'dí' in c), None)
     col_cat = next((c for c in df_rutas_raw.columns if 'Cat' in c or 'cat' in c), None)
 
     # Filtro Día
-    if col_dia:
+    if col_dia and col_dia in df_rutas_raw.columns:
         dias_unicos = ["Todos"] + sorted([d for d in df_rutas_raw[col_dia].unique() if d])
         filtro_dia = st.sidebar.selectbox("Filtrar por Día:", dias_unicos)
         if filtro_dia != "Todos":
             df_filtrado = df_filtrado[df_filtrado[col_dia] == filtro_dia]
 
     # Filtro Categoría
-    if col_cat:
+    if col_cat and col_cat in df_rutas_raw.columns:
         cats_unicas = ["Todas"] + sorted([c for c in df_rutas_raw[col_cat].unique() if c])
         filtro_cat = st.sidebar.selectbox("Filtrar por Categoría:", cats_unicas)
         if filtro_cat != "Todas":
@@ -109,10 +110,10 @@ if datos_cargados:
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Registros de Rutas", f"{len(df_filtrado)}")
     
-    cat_count = df_filtrado[col_cat].nunique() if col_cat else 0
+    cat_count = df_filtrado[col_cat].nunique() if col_cat and col_cat in df_filtrado.columns else 0
     col2.metric("Categorías Activas", f"{cat_count}")
     
-    dia_count = df_filtrado[col_dia].nunique() if col_dia else 0
+    dia_count = df_filtrado[col_dia].nunique() if col_dia and col_dia in df_filtrado.columns else 0
     col3.metric("Días Operativos", f"{dia_count}")
 
     st.divider()
@@ -120,7 +121,6 @@ if datos_cargados:
     if menu_opcion == "🚚 1. Control de Rutas y Horarios":
         st.subheader("📋 Planificación de Rutas por Sucursal")
         
-        # Filtro de columnas para mostrar solo lo relevante
         cols_mostrar = [c for c in df_filtrado.columns if not c.startswith('Unnamed')]
         st.dataframe(
             df_filtrado[cols_mostrar],
@@ -130,11 +130,11 @@ if datos_cargados:
 
     elif menu_opcion == "📊 2. Resumen por Categoría y Frecuencia":
         st.subheader("📊 Distribución de Rutas por Categoría")
-        if col_cat:
+        if col_cat and col_cat in df_filtrado.columns:
             st.bar_chart(df_filtrado[col_cat].value_counts())
         
         col_frec = next((c for c in df_filtrado.columns if 'Frec' in c or 'frec' in c), None)
-        if col_frec:
+        if col_frec and col_frec in df_filtrado.columns:
             st.subheader("📌 Frecuencia de Salida")
             st.dataframe(df_filtrado[col_frec].value_counts().reset_index(), use_container_width=True)
 
