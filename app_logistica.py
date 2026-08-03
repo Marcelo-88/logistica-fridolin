@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 
 # ==========================================
 # 1. CONFIGURACIÓN DE PÁGINA
@@ -20,19 +19,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# 2. ENLACE DIRECTO A GOOGLE SHEETS
+# ==========================================
+# ID de tu hoja de Google Sheets
+SHEET_ID = "1vMrjVjM7575QlbgM19mpbQhrUxnC183hH3MDjC8AjfM"
 
-# ==========================================
-# 2. CONEXIÓN A GOOGLE SHEETS Y LIMPIEZA
-# ==========================================
-@st.cache_data(ttl=600)  # Recarga los datos cada 10 minutos automáticamente
+@st.cache_data(ttl=300)
 def cargar_datos_logistica():
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    # Cargar las pestañas directamente mediante URL CSV export
+    url_rutas = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Rutas_Logistica"
+    url_sucursales = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sucursales"
     
-    # Cargar las pestañas de Google Sheets
-    df_rutas = conn.read(worksheet="Rutas_Logistica")
-    df_sucursales = conn.read(worksheet="Sucursales")
+    df_rutas = pd.read_csv(url_rutas)
+    df_sucursales = pd.read_csv(url_sucursales)
 
-    # Limpieza de textos en Rutas
+    # --- Limpieza de datos: Rutas ---
     df_rutas = df_rutas.dropna(how="all")
     for col in ['Día', 'Categoría', 'Sucursal_1', 'Sucursal_2', 'Sucursal_3', 'Sucursal 4', 'Movilidad']:
         if col in df_rutas.columns:
@@ -40,7 +42,7 @@ def cargar_datos_logistica():
     
     df_rutas['KM_Recorridos'] = pd.to_numeric(df_rutas['KM_Recorridos'], errors='coerce').fillna(0)
     
-    # Extraer Latitud y Longitud GPS de Sucursales
+    # --- Limpieza de datos: Sucursales (GPS) ---
     df_sucursales = df_sucursales.dropna(how="all")
     df_sucursales['SUCURSAL'] = df_sucursales['SUCURSAL'].astype(str).str.replace('SUC.', '', regex=False).str.strip()
     
@@ -52,8 +54,7 @@ def cargar_datos_logistica():
 
     return df_rutas, df_sucursales
 
-
-# Cargar los datos
+# Intentar cargar datos
 try:
     df_rutas_raw, df_sucursales_raw = cargar_datos_logistica()
     datos_cargados = True
@@ -61,9 +62,8 @@ except Exception as e:
     st.error(f"⚠️ Error al conectar con Google Sheets: {e}")
     datos_cargados = False
 
-
 # ==========================================
-# 3. MENÚ LATERAL Y FILTROS
+# 3. BARRA LATERAL Y FILTROS
 # ==========================================
 st.sidebar.image("https://em-content.zobj.net/source/apple/354/delivery-truck_1f68a.png", width=60)
 st.sidebar.title("Logística Fridolin")
@@ -84,7 +84,7 @@ if datos_cargados:
     st.sidebar.divider()
     st.sidebar.subheader("🎯 Filtros Rápidos")
 
-    # Filtros por Día, Categoría y Movilidad
+    # Filtros
     dias_disponibles = ["Todos"] + sorted(list(df_rutas_raw['Día'].dropna().unique()))
     filtro_dia = st.sidebar.selectbox("Filtrar por Día:", dias_disponibles)
 
@@ -94,7 +94,7 @@ if datos_cargados:
     movs_disponibles = ["Todas"] + sorted([m for m in df_rutas_raw['Movilidad'].unique() if m not in ['nan', 'None']])
     filtro_mov = st.sidebar.selectbox("Filtrar por Movilidad:", movs_disponibles)
 
-    # Filtrar el conjunto de datos
+    # Filtrar Dataset
     df_filtrado = df_rutas_raw.copy()
     if filtro_dia != "Todos":
         df_filtrado = df_filtrado[df_filtrado['Día'] == filtro_dia]
@@ -103,14 +103,12 @@ if datos_cargados:
     if filtro_mov != "Todas":
         df_filtrado = df_filtrado[df_filtrado['Movilidad'] == filtro_mov]
 
-
 # ==========================================
-# 4. PANTALLAS Y MÓDULOS
+# 4. CONTENIDO PRINCIPAL
 # ==========================================
 if datos_cargados:
     st.title("🚛 Panel Operativo de Rutas y Logística")
     
-    # Tarjetas de datos rápidos (KPIs)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Rutas", f"{len(df_filtrado)}")
     col2.metric("Kilómetros Totales", f"{df_filtrado['KM_Recorridos'].sum():,.0f} km")
@@ -123,7 +121,6 @@ if datos_cargados:
 
     st.divider()
 
-    # Muestras según el menú
     if menu_opcion == "🚚 1. Control de Movilidades y Turnos":
         st.subheader("📋 Detalle Operativo de Rutas y Horarios")
         st.dataframe(
