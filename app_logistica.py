@@ -838,7 +838,7 @@ if datos_cargados:
                     try:
                         # CONFIGURACIÓN ESTABLE CON GOOGLE.GENERATIVEAI
                         genai.configure(api_key=api_key_secret)
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        model = genai.GenerativeModel('gemini-2.0-flash')
 
                         tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
 
