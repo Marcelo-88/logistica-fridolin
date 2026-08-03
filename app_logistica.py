@@ -874,7 +874,7 @@ if datos_cargados:
                                         Responde en un tono profesional, claro y directo, usando viñetas.
                                         """
                                         response = client.models.generate_content(
-                                            model='gemini-2.5-flash',
+                                            model='gemini-1.5-flash',
                                             contents=prompt_opt,
                                         )
                                         st.markdown("---")
@@ -904,10 +904,10 @@ if datos_cargados:
 
                                         Pregunta del usuario: {query_ia}
 
-                                        Responde basándote estrictamente en los datos provistos arriba.
+                                        Responde basándote strictly en los datos provistos arriba.
                                         """
                                         response_chat = client.models.generate_content(
-                                            model='gemini-2.5-flash',
+                                            model='gemini-1.5-flash',
                                             contents=prompt_chat,
                                         )
                                         st.markdown("---")
