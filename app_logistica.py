@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import unicodedata
+import urllib.parse
 import google.generativeai as genai
 
 # ==========================================
@@ -393,7 +394,7 @@ if datos_cargados:
             df_mov_filtrado = df_mov_filtrado[df_mov_filtrado['Día'].isin(dias_seleccionados)]
 
     if col_cat and col_cat in df_rutas_raw.columns:
-        cats_disponibles = sorted([c for c in df_rutas_raw[col_cat].unique() if c and str(c).strip() not in ['nan', 'None', '']])
+        cats_disponibles = sorted([c for c in df_rutas_raw[col_cat].unique() if c and str(c).strip() not in ['nan', 'None']])
         cats_seleccionadas = st.sidebar.multiselect(
             "📦 Categoría(s):",
             options=cats_disponibles,
@@ -426,8 +427,9 @@ if datos_cargados:
             "🎴 1. Tarjetas de Ruta y Horarios",
             "⚖️ 2. Comparador de Movilidades",
             "⏱️ 3. Jornada de Movilidades",
-            "🗺️ 4. Mapa de Sucursales",
-            "🤖 5. Asistente & Optimizador IA"
+            "📱 4. Enviar Rutas por WhatsApp",
+            "🗺️ 5. Mapa de Sucursales",
+            "🤖 6. Asistente & Optimizador IA"
         ]
     )
 
@@ -729,9 +731,61 @@ if datos_cargados:
             st.warning("No hay datos de movilidades disponibles para los filtros actuales.")
 
     # ----------------------------------------------------
-    # VISTA 4: MAPA DE SUCURSALES
+    # VISTA 4: ENVIAR RUTAS POR WHATSAPP
     # ----------------------------------------------------
-    elif menu_opcion == "🗺️ 4. Mapa de Sucursales":
+    elif menu_opcion == "📱 4. Enviar Rutas por WhatsApp":
+        st.title("📱 Enviar Rutas por WhatsApp")
+        st.caption("Genera mensajes con la orden de salida simplificada para los conductores o encargados.")
+        st.divider()
+
+        col_ws1, col_ws2 = st.columns(2)
+        with col_ws1:
+            dia_ws = st.selectbox("📅 Selecciona el Día a Enviar:", options=dias_disponibles, index=1 if "Martes" in dias_disponibles else 0)
+        with col_ws2:
+            num_telefono = st.text_input("📱 Número de WhatsApp (con código de país):", value="591", help="Ejemplo para Bolivia: 59170000000")
+
+        df_dia_ws = df_rutas_raw[df_rutas_raw[col_dia] == dia_ws]
+
+        if df_dia_ws.empty:
+            st.warning(f"No hay rutas registradas para el día {dia_ws}.")
+        else:
+            cols_sucursales = [c for c in df_dia_ws.columns if 'Sucursal' in str(c)]
+
+            # Generar texto limpio por movilidad
+            mensaje_texto = f"📋 *PROGRAMACIÓN DE RUTAS - {dia_ws.upper()}*\n\n"
+            movs_dia = sorted([m for m in df_dia_ws[col_mov].dropna().astype(str).str.strip().unique() if m in ['1','2','3','4','5','6','7','8','9','10']], key=lambda x: int(x))
+
+            for m in movs_dia:
+                df_m = df_dia_ws[df_dia_ws[col_mov].astype(str).str.strip() == str(m)]
+                mensaje_texto += f"🚚 *MOVILIDAD {m}*\n"
+
+                for idx, r in df_m.iterrows():
+                    cat = r.get(col_cat, 'Ruta')
+                    h_sal = r.get(col_h_salida, 'N/A')
+                    h_ret = r.get(col_h_retorno, 'N/A')
+
+                    paradas = [str(r[c]).strip() for c in cols_sucursales if str(r[c]).strip() not in ['', 'nan', 'None']]
+                    cadena_paradas = " ➔ ".join(paradas)
+
+                    mensaje_texto += f"• *{cat}:* {cadena_paradas}\n"
+                    mensaje_texto += f"  ⏰ Salida: {h_sal} | Retorno: {h_ret}\n"
+                
+                mensaje_texto += "\n"
+
+            st.subheader("📝 Vista Previa del Mensaje:")
+            st.text_area("Texto a enviar:", value=mensaje_texto, height=220)
+
+            # Generar enlace
+            num_clean = num_telefono.replace("+", "").replace(" ", "").strip()
+            mensaje_url = urllib.parse.quote(mensaje_texto)
+            wa_link = f"https://wa.me/{num_clean}?text={mensaje_url}"
+
+            st.link_button("🚀 Abrir WhatsApp y Enviar Mensaje", wa_link, use_container_width=True)
+
+    # ----------------------------------------------------
+    # VISTA 5: MAPA DE SUCURSALES
+    # ----------------------------------------------------
+    elif menu_opcion == "🗺️ 5. Mapa de Sucursales":
         st.title("🗺️ Mapa Geográfico de Sucursales")
         st.caption("Ubicación e interacción espacial con la red de sucursales Fridolin.")
         st.divider()
@@ -759,9 +813,9 @@ if datos_cargados:
         st.components.v1.html(html_iframe, height=620)
 
     # ----------------------------------------------------
-    # VISTA 5: ASISTENTE & OPTIMIZADOR IA (NUEVA PESTAÑA)
+    # VISTA 6: ASISTENTE & OPTIMIZADOR IA
     # ----------------------------------------------------
-    elif menu_opcion == "🤖 5. Asistente & Optimizador IA":
+    elif menu_opcion == "🤖 6. Asistente & Optimizador IA":
         st.title("🤖 Asistente Logístico Inteligente & Optimizador")
         st.caption("Aprovecha la Inteligencia Artificial para analizar rutas, optimizar la secuencia de entrega y resolver dudas de operación.")
         st.divider()
