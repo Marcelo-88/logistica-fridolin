@@ -21,7 +21,6 @@ st.markdown("""
 # ==========================================
 # 2. ENLACE PÚBLICO DE GOOGLE SHEETS
 # ==========================================
-# URL de exportación publicada
 URL_RUTAS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h/pub?sheet=Rutas_Logistica&output=csv"
 URL_SUCURSALES = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h/pub?sheet=Sucursales&output=csv"
 
@@ -29,41 +28,35 @@ URL_SUCURSALES = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6
 def cargar_datos_logistica():
     df_rutas = pd.read_csv(URL_RUTAS)
     
-    # Intentar cargar sucursales si existe la pestaña
+    # Limpiar espacios invisibles en nombres de columnas
+    df_rutas.columns = df_rutas.columns.str.strip()
+    
+    # Intentar cargar sucursales si existe
     try:
         df_sucursales = pd.read_csv(URL_SUCURSALES)
+        df_sucursales.columns = df_sucursales.columns.str.strip()
     except Exception:
         df_sucursales = pd.DataFrame()
 
     # --- Limpieza Rutas ---
     df_rutas = df_rutas.dropna(how="all")
     
-    # Asegurar texto limpio en columnas clave
-    cols_texto = ['Día', 'Categoría', 'Sucursal_1', 'Sucursal_2', 'Sucursal_3', 'Sucursal 4', 'Comentario', 'Frecuencia']
-    for c in cols_texto:
-        if c in df_rutas.columns:
-            df_rutas[c] = df_rutas[c].astype(str).str.strip().replace({'nan': '', 'None': ''})
+    # Identificar columna Día
+    col_dia = next((c for c in df_rutas.columns if 'Dí' in c or 'Di' in c or 'dí' in c or 'di' in c), None)
+    col_cat = next((c for c in df_rutas.columns if 'Cat' in c or 'cat' in c), None)
+    
+    # Limpieza de textos
+    for col in df_rutas.columns:
+        df_rutas[col] = df_rutas[col].astype(str).str.strip().replace({'nan': '', 'None': ''})
 
-    # --- Limpieza Sucursales ---
-    if not df_sucursales.empty:
-        df_sucursales = df_sucursales.dropna(how="all")
-        if 'SUCURSAL' in df_sucursales.columns:
-            df_sucursales['SUCURSAL'] = df_sucursales['SUCURSAL'].astype(str).str.replace('SUC.', '', regex=False).str.strip()
-        
-        if 'LATITUD Y LONGT' in df_sucursales.columns:
-            coords = df_sucursales['LATITUD Y LONGT'].astype(str).str.split(',', expand=True)
-            if coords.shape[1] >= 2:
-                df_sucursales['lat'] = pd.to_numeric(coords[0], errors='coerce')
-                df_sucursales['lon'] = pd.to_numeric(coords[1], errors='coerce')
-
-    return df_rutas, df_sucursales
+    return df_rutas, df_sucursales, col_dia, col_cat
 
 # Cargar Datos
 try:
-    df_rutas_raw, df_sucursales_raw = cargar_datos_logistica()
+    df_rutas_raw, df_sucursales_raw, col_dia, col_cat = cargar_datos_logistica()
     datos_cargados = True
 except Exception as e:
-    st.error(f"⚠️ Error al conectar con Google Sheets: {e}")
+    st.error(f"⚠️ Error al procesar los datos de Google Sheets: {e}")
     datos_cargados = False
 
 # ==========================================
@@ -87,20 +80,21 @@ if datos_cargados:
     st.sidebar.divider()
     st.sidebar.subheader("🎯 Filtros Rápidos")
 
-    # Filtro Día
-    dias_unicos = ["Todos"] + [d for d in df_rutas_raw['Día'].unique() if d and d != 'nan']
-    filtro_dia = st.sidebar.selectbox("Filtrar por Día:", dias_unicos)
-
-    # Filtro Categoría
-    cats_unicas = ["Todas"] + [c for c in df_rutas_raw['Categoría'].unique() if c and c != 'nan']
-    filtro_cat = st.sidebar.selectbox("Filtrar por Categoría:", cats_unicas)
-
-    # Aplicar Filtros
     df_filtrado = df_rutas_raw.copy()
-    if filtro_dia != "Todos":
-        df_filtrado = df_filtrado[df_filtrado['Día'] == filtro_dia]
-    if filtro_cat != "Todas":
-        df_filtrado = df_filtrado[df_filtrado['Categoría'] == filtro_cat]
+
+    # Filtro Día seguro
+    if col_dia and col_dia in df_rutas_raw.columns:
+        dias_unicos = ["Todos"] + sorted([d for d in df_rutas_raw[col_dia].unique() if d])
+        filtro_dia = st.sidebar.selectbox("Filtrar por Día:", dias_unicos)
+        if filtro_dia != "Todos":
+            df_filtrado = df_filtrado[df_filtrado[col_dia] == filtro_dia]
+
+    # Filtro Categoría seguro
+    if col_cat and col_cat in df_rutas_raw.columns:
+        cats_unicas = ["Todas"] + sorted([c for c in df_rutas_raw[col_cat].unique() if c])
+        filtro_cat = st.sidebar.selectbox("Filtrar por Categoría:", cats_unicas)
+        if filtro_cat != "Todas":
+            df_filtrado = df_filtrado[df_filtrado[col_cat] == filtro_cat]
 
 # ==========================================
 # 4. CONTENIDO PRINCIPAL
@@ -109,30 +103,30 @@ if datos_cargados:
     st.title("🚛 Panel Operativo de Logística Fridolin")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Registros de Rutas", f"{len(df_filtrado)}")
-    col2.metric("Categorías Activas", f"{df_filtrado['Categoría'].nunique()}")
-    col3.metric("Días Operativos", f"{df_filtrado['Día'].nunique()}")
+    col1.metric("Total Registros", f"{len(df_filtrado)}")
+    
+    cat_count = df_filtrado[col_cat].nunique() if col_cat and col_cat in df_filtrado.columns else 0
+    col2.metric("Categorías Activas", f"{cat_count}")
+    
+    dia_count = df_filtrado[col_dia].nunique() if col_dia and col_dia in df_filtrado.columns else 0
+    col3.metric("Días Operativos", f"{dia_count}")
 
     st.divider()
 
     if menu_opcion == "🚚 1. Control de Rutas y Horarios":
         st.subheader("📋 Planificación de Rutas por Sucursal")
-        
-        # Seleccionar columnas visibles que realmente existen en el Excel
-        cols_mostrar = [c for c in ['Día', 'Categoría', 'Sucursal_1', 'Sucursal_2', 'Sucursal_3', 'Sucursal 4', 'Comentario', 'Frecuencia'] if c in df_filtrado.columns]
-        
         st.dataframe(
-            df_filtrado[cols_mostrar],
+            df_filtrado,
             use_container_width=True,
             hide_index=True
         )
 
     elif menu_opcion == "📊 2. Resumen por Categoría y Frecuencia":
         st.subheader("📊 Distribución de Rutas por Categoría")
-        st.bar_chart(df_filtrado['Categoría'].value_counts())
-        
-        st.subheader("📌 Frecuencia de Distribución")
-        st.dataframe(df_filtrado['Frecuencia'].value_counts().reset_index(), use_container_width=True)
+        if col_cat and col_cat in df_filtrado.columns:
+            st.bar_chart(df_filtrado[col_cat].value_counts())
+        else:
+            st.info("No se encontró la columna Categoría para graficar.")
 
     elif menu_opcion == "🏢 3. Directorio de Sucursales":
         st.subheader("🏢 Base de Datos de Sucursales")
