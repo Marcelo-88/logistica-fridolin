@@ -240,7 +240,7 @@ def decimal_a_horas_str(horas_dec):
         m = 0
     return f"{h}:{m:02d}:00"
 
-# Función Robusta para Consultar IA (Resuelve 404 y 429)
+# Función Robusta para Consultar IA (Filtra modelos TTS/Audio y errores 400/404/429)
 def generar_respuesta_ia(prompt):
     modelos_candidatos = [
         'models/gemini-2.0-flash',
@@ -250,11 +250,13 @@ def generar_respuesta_ia(prompt):
         'gemini-1.5-flash'
     ]
     
-    # Intenta obtener la lista activa desde la API
+    # Intenta obtener la lista activa descartando modelos de Voz/TTS
     try:
         modelos_api = [
             m.name for m in genai.list_models() 
             if 'generateContent' in m.supported_generation_methods
+            and 'tts' not in m.name.lower()
+            and 'audio' not in m.name.lower()
         ]
         if modelos_api:
             # Priorizar modelos Flash
@@ -272,7 +274,7 @@ def generar_respuesta_ia(prompt):
         except ResourceExhausted:
             continue
         except GoogleAPIError as e:
-            if "404" in str(e) or "429" in str(e) or "not found" in str(e).lower():
+            if any(k in str(e).lower() for k in ["404", "429", "400", "not found"]):
                 ultimo_error = e
                 continue
             else:
