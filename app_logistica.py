@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 import google.generativeai as genai
 
 # ---------------------------------------------------------
@@ -20,15 +19,13 @@ st.title("🚚 Control y Optimización de Rutas Logísticas")
 api_key_secret = st.secrets.get("GEMINI_API_KEY", None)
 
 # ---------------------------------------------------------
-# SIDEBAR / PANEL LATERAL (FILTROS Y NAVEGACIÓN)
+# CARGA DE DATOS DESDE GOOGLE SHEETS
 # ---------------------------------------------------------
-st.sidebar.header("📋 Filtros de Consulta")
-
-# Carga de datos desde Google Sheets con cache
 @st.cache_data(ttl=600)
 def cargar_datos():
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
+        # Conexión nativa de Streamlit para Google Sheets
+        conn = st.connection("gsheets", type="gsheets")
         df = conn.read()
         return df
     except Exception as e:
@@ -38,7 +35,11 @@ def cargar_datos():
 df_rutas = cargar_datos()
 st.session_state["df_rutas"] = df_rutas
 
-# Filtros Interactivos en Sidebar
+# ---------------------------------------------------------
+# SIDEBAR / PANEL LATERAL (FILTROS Y NAVEGACIÓN)
+# ---------------------------------------------------------
+st.sidebar.header("📋 Filtros de Consulta")
+
 dias_disponibles = ["Todos los días"]
 categorias_disponibles = ["Todas las categorías"]
 
@@ -125,12 +126,11 @@ elif "5. Mapa" in opcion_vista:
     st.info("Vista de ubicación geográfica de sucursales en desarrollo.")
 
 # ---------------------------------------------------------
-# VISTA 6: ASISTENTE & OPTIMIZADOR IA (CORREGIDO Y OPTIMIZADO)
+# VISTA 6: ASISTENTE & OPTIMIZADOR IA
 # ---------------------------------------------------------
 elif "6. Asistente" in opcion_vista:
     st.header("🤖 Asistente & Optimizador IA")
     
-    # Manejo de API Key (prioriza Secrets, luego Input de pantalla)
     api_key = api_key_secret
     
     if not api_key:
@@ -161,11 +161,9 @@ elif "6. Asistente" in opcion_vista:
                 st.warning("⚠️ Escribe una consulta antes de presionar el botón.")
             else:
                 try:
-                    # Configuración e invocación del modelo gemini-1.5-flash
                     genai.configure(api_key=api_key.strip())
                     model = genai.GenerativeModel("gemini-1.5-flash")
                     
-                    # Preparar el contexto de la base de datos
                     datos_csv = ""
                     if not df_rutas.empty:
                         datos_csv = df_rutas.to_csv(index=False)
