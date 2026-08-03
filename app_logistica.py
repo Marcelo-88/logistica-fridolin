@@ -836,7 +836,7 @@ if datos_cargados:
                     st.divider()
 
                     try:
-                        # CONFIGURACIÓN ESTABLE CON GOOGLE.GENERATIVEAI
+                        # CONFIGURACIÓN ESTABLE CON GEMINI-2.0-FLASH
                         genai.configure(api_key=api_key_secret)
                         model = genai.GenerativeModel('gemini-2.0-flash')
 
@@ -890,19 +890,25 @@ if datos_cargados:
                                     st.warning("Escribe una consulta antes de enviar.")
                                 else:
                                     with st.spinner("Consultando con IA..."):
+                                        # 🔹 OPTIMIZACIÓN DE TOKENS: Seleccionamos únicamente las columnas operativas relevantes
+                                        cols_rutas = [c for c in [col_dia, col_cat, col_mov, col_h_salida, col_h_retorno] if c and c in df_rutas_raw.columns]
+                                        cols_rutas += [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
+                                        
+                                        df_rutas_resumido = df_rutas_raw[cols_rutas]
+
                                         prompt_chat = f"""
                                         Eres el asistente logístico inteligente de la pastelería Fridolin en Santa Cruz.
-                                        Tienes acceso a los siguientes datos actuales del sistema:
+                                        Responde la consulta del usuario basándote ÚNICAMENTE en la siguiente información operativa del sistema:
 
-                                        TABLA DE RUTAS Y DESPACHOS:
-                                        {df_rutas_raw.to_markdown(index=False)}
+                                        RESUMEN DE RUTAS Y DESPACHOS:
+                                        {df_rutas_resumido.to_markdown(index=False)}
 
-                                        TABLA DE JORNADAS Y TURNOS:
+                                        JORNADAS Y TURNOS DE MOVILIDADES:
                                         {df_movilidades_raw.to_markdown(index=False)}
 
                                         Pregunta del usuario: {query_ia}
 
-                                        Responde basándote estrictamente en los datos provistos arriba.
+                                        Responde de forma concisa, profesional y directa utilizando viñetas.
                                         """
                                         response_chat = model.generate_content(prompt_chat)
                                         st.markdown("---")
