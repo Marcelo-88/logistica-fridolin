@@ -16,7 +16,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
-    /* Tipografía Global y Fondo de Aplicación */
     html, body, [class*="css"], .stApp {
         font-family: 'Poppins', sans-serif !important;
         background-color: #fdfbf7 !important;
@@ -25,19 +24,16 @@ st.markdown("""
 
     .block-container { padding-top: 1.2rem; padding-bottom: 2.5rem; }
     
-    /* Headers / Títulos Principales */
     h1, h2, h3 {
         color: #800c14 !important;
         font-weight: 700 !important;
     }
 
-    /* Estilo del Sidebar */
     [data-testid="stSidebar"] {
         background-color: #ffffff !important;
         border-right: 1px solid #f1e9df;
     }
 
-    /* Contenedor de Tarjeta Estándar (Fridolin) */
     .route-card {
         background-color: #ffffff;
         border: 1px solid #eeddd0;
@@ -48,7 +44,6 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(128, 12, 20, 0.04);
     }
 
-    /* Contenedor de Tarjeta Madrugada / Turno Noche */
     .route-card-madrugada {
         background-color: #faf5f5;
         border: 1px solid #e5c3c6;
@@ -59,7 +54,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(74, 7, 12, 0.08);
     }
     
-    /* Badges / Etiquetas con estilo Fridolin */
     .badge-day {
         background-color: #fce8e9;
         color: #800c14;
@@ -86,7 +80,6 @@ st.markdown("""
         font-size: 0.85rem;
     }
     
-    /* Badges de Horarios */
     .badge-time {
         background-color: #800c14;
         color: #ffffff;
@@ -112,7 +105,6 @@ st.markdown("""
         border: 1px solid #6e1016;
     }
     
-    /* Chips de Paradas/Sucursales */
     .stop-chip {
         display: inline-block;
         background-color: #fdfbf7;
@@ -129,7 +121,6 @@ st.markdown("""
         margin: 0 4px;
     }
 
-    /* Personalización de Métricas y Botones Streamlit */
     [data-testid="stMetricValue"] {
         color: #800c14 !important;
         font-weight: 700 !important;
@@ -148,7 +139,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Función para determinar si una hora pertenece al turno de Madrugada/Noche (< 07:00 AM o >= 22:00)
+# Función para determinar si una hora pertenece al turno de Madrugada/Noche
 def es_salida_madrugada(hora_str):
     if not hora_str or str(hora_str).strip() in ["Sin especificar", "nan", "None", ""]:
         return False
@@ -161,7 +152,7 @@ def es_salida_madrugada(hora_str):
         return False
 
 # ==========================================
-# 2. CARGA DE DATOS
+# 2. CARGA Y LIMPIEZA ROBUSTA DE DATOS
 # ==========================================
 PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTf5S9qltxreT6S6yCMv-OO8OHYSUCg6kkP8pcSWqKXfOv4ON0hm-7HlBm-hSe0cI2aUBvWVIA5P72h"
 GID_RUTAS = "2020862153"
@@ -174,11 +165,15 @@ URL_SUCURSALES = f"{PUB_BASE}/pub?single=true&gid={GID_SUCURSALES}&output=csv"
 def cargar_datos_logistica():
     df_raw = pd.read_csv(URL_RUTAS, header=None)
     
-    # --- RUTAS DE DISTRIBUCIÓN (Columnas A a M) ---
-    df_rutas = df_raw.iloc[:, :13].copy()
-    df_rutas.columns = df_rutas.iloc[0]
+    # --- RUTAS DE DISTRIBUCIÓN (Columnas A a N, incluyendo la Columna N de Movilidad) ---
+    # Tomamos hasta la columna N (índice 13)
+    df_rutas = df_raw.iloc[:, :14].copy()
+    
+    # Asignar encabezados desde la fila 0 del Excel
+    df_rutas.columns = [str(c).strip() for c in df_rutas.iloc[0]]
     df_rutas = df_rutas[1:].reset_index(drop=True).dropna(how="all")
     
+    # Limpieza general de texto en celdas
     for col in df_rutas.columns:
         if pd.notna(col):
             df_rutas[col] = df_rutas[col].astype(str).str.strip().replace({'nan': '', 'None': '', 'NaN': '', '<NA>': ''})
@@ -186,7 +181,7 @@ def cargar_datos_logistica():
     df_rutas = df_rutas.loc[:, df_rutas.columns.notna()]
     df_rutas = df_rutas.loc[:, ~df_rutas.columns.str.startswith('Unnamed')]
 
-    # --- MOVILIDADES Y HORARIOS POR DÍA ---
+    # --- MOVILIDADES Y HORARIOS POR DÍA (Jornadas) ---
     bloques_movilidades = []
     if df_raw.shape[1] >= 20:
         dia_actual = "Lunes"
@@ -228,33 +223,26 @@ try:
     df_rutas_raw, df_movilidades_raw, df_sucursales_raw = cargar_datos_logistica()
     datos_cargados = True
 except Exception as e:
-    st.error(f"⚠️ Error al procesar los datos: {e}")
+    st.error(f"⚠️ Error al cargar los datos: {e}")
     datos_cargados = False
 
 # ==========================================
-# 3. DETECCIÓN AUTOMÁTICA Y ROBUSTA DE COLUMNAS
+# 3. IDENTIFICACIÓN EXACTA DE COLUMNAS
 # ==========================================
 if datos_cargados:
     col_dia = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['dí', 'dia'])), df_rutas_raw.columns[0])
     col_cat = next((c for c in df_rutas_raw.columns if 'cat' in str(c).lower()), None)
     
-    # DETECCIÓN DE COLUMNA DE MOVILIDAD (Búsqueda por coincidencia de nombre exacto o contenido numérico de movilidad)
+    # Identificar la Columna N de Movilidad por nombre exacto o posición
     col_mov = None
-    # 1. Por coincidencia explicita de nombre
     for c in df_rutas_raw.columns:
-        c_str = str(c).lower().strip()
-        if 'movilidad' in c_str or c_str in ['mov', 'unidad', 'camion', 'vehiculo']:
+        if 'movilidad' in str(c).lower():
             col_mov = c
             break
-
-    # 2. Si no la encuentra por nombre, busca la columna que contenga números de movilidad (1, 2, 3...)
-    if not col_mov:
-        for c in df_rutas_raw.columns:
-            valores_unicos = set(df_rutas_raw[c].dropna().astype(str).str.strip().unique())
-            # Si contiene números de movilidad comunes como '1', '2', '3'
-            if any(v in valores_unicos for v in ['1', '2', '3', '4', '5']):
-                col_mov = c
-                break
+            
+    # Si no la encontró por nombre, asignamos por la última columna cargada de la tabla (Columna N)
+    if not col_mov and len(df_rutas_raw.columns) >= 14:
+        col_mov = df_rutas_raw.columns[13]
 
     col_h_salida = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['hora_sal', 'salida'])), None)
     col_h_retorno = next((c for c in df_rutas_raw.columns if any(k in str(c).lower() for k in ['hora_ret', 'retorno'])), None)
@@ -404,7 +392,7 @@ if datos_cargados:
             renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
 
     # ----------------------------------------------------
-    # VISTA 2: COMPARADOR DE MOVILIDADES
+    # VISTA 2: COMPARADOR DE MOVILIDADES (CORREGIDO Y AGRUPADO)
     # ----------------------------------------------------
     elif menu_opcion == "⚖️ 2. Comparador de Movilidades":
         st.title("⚖️ Comparador Lado a Lado de Movilidades")
@@ -414,87 +402,80 @@ if datos_cargados:
         col_frec = next((c for c in df_rutas_raw.columns if 'frec' in str(c).lower()), None)
         col_com = next((c for c in df_rutas_raw.columns if 'comentario' in str(c).lower()), None)
         
-        if not col_mov:
-            st.error("⚠️ No se pudo identificar la columna de Movilidad en la tabla de rutas.")
+        # Obtenemos todos los números de movilidad únicos válidos desde la Columna N
+        movs_valores = df_rutas_raw[col_mov].dropna().astype(str).str.strip().unique()
+        movs_validas = sorted([m for m in movs_valores if m in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']])
+
+        if not movs_validas:
+            st.warning("⚠️ No se encontraron números de movilidad en la columna N.")
         else:
+            # Construir opciones del dropdown (Ej: "Movilidad 1", "Movilidad 2"...)
+            opciones_mov = [f"Movilidad {m}" for m in movs_validas]
+            mapa_mov_original = {f"Movilidad {m}": m for m in movs_validas}
+
             # Selección de Día
             dias_lista = [d for d in df_rutas_raw[col_dia].unique() if d and str(d).strip() not in ['nan', 'None', '']]
             dia_comp = st.selectbox("📅 Selecciona el Día a Analizar:", options=dias_lista)
 
-            # Filtrar rutas por día seleccionado
+            # Filtrar por el día seleccionado
             df_dia_base = df_rutas_raw[df_rutas_raw[col_dia] == dia_comp]
-
-            # Obtenemos movilidades únicas registradas en el día
-            movs_raw = df_dia_base[col_mov].dropna().astype(str).str.strip().unique()
-
-            # Dar formato estandarizado "Movilidad X" a las opciones del menú desplegable
-            opciones_mov = []
-            mapa_mov_original = {}
-            
-            for m in sorted([m for m in movs_raw if m and m not in ['nan', 'None', '']]):
-                etiqueta = f"Movilidad {m}" if not m.lower().startswith("movilidad") else m
-                opciones_mov.append(etiqueta)
-                mapa_mov_original[etiqueta] = m
 
             st.divider()
 
-            if len(opciones_mov) == 0:
-                st.info(f"No hay movilidades asignadas registradas para el día **{dia_comp}**.")
-            else:
-                col_left, col_right = st.columns(2)
+            col_left, col_right = st.columns(2)
 
-                # --- COLUMNA IZQUIERDA: MOVILIDAD A ---
-                with col_left:
-                    st.subheader("🚛 Movilidad A")
-                    mov_a_label = st.selectbox("Selecciona Movilidad A:", options=opciones_mov, index=0, key="mov_a")
+            # --- COLUMNA IZQUIERDA: MOVILIDAD A ---
+            with col_left:
+                st.subheader("🚛 Movilidad A")
+                mov_a_label = st.selectbox("Selecciona Movilidad A:", options=opciones_mov, index=0, key="mov_a")
+                
+                if mov_a_label:
+                    val_orig_a = mapa_mov_original[mov_a_label]
+                    df_mov_a = df_dia_base[df_dia_base[col_mov].astype(str).str.strip() == str(val_orig_a)]
                     
-                    if mov_a_label:
-                        val_orig_a = mapa_mov_original[mov_a_label]
-                        df_mov_a = df_dia_base[df_dia_base[col_mov].astype(str).str.strip() == val_orig_a]
-                        
-                        # Info de jornada si está disponible
-                        if not df_movilidades_raw.empty:
-                            jornada_a = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'].astype(str).str.strip() == str(val_orig_a))]
-                            if not jornada_a.empty:
-                                ing_a = jornada_a.iloc[0]['Ingreso']
-                                sal_a = jornada_a.iloc[0]['Salida']
-                                tot_a = jornada_a.iloc[0]['Total Horas']
-                                st.info(f"⏱️ **Jornada en Planta:** {ing_a} a {sal_a} ({tot_a} hrs)")
+                    # Cargar info de jornada (Vista 3)
+                    if not df_movilidades_raw.empty:
+                        jornada_a = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'].astype(str).str.strip() == str(val_orig_a))]
+                        if not jornada_a.empty:
+                            ing_a = jornada_a.iloc[0]['Ingreso']
+                            sal_a = jornada_a.iloc[0]['Salida']
+                            tot_a = jornada_a.iloc[0]['Total Horas']
+                            st.info(f"⏱️ **Jornada en Planta:** {ing_a} a {sal_a} ({tot_a} hrs)")
 
-                        st.metric("Rutas Programadas", len(df_mov_a))
+                    st.metric("Rutas Programadas", len(df_mov_a))
 
-                        if len(df_mov_a) == 0:
-                            st.warning(f"No hay rutas registradas para {mov_a_label} el {dia_comp}.")
-                        else:
-                            for _, row in df_mov_a.iterrows():
-                                renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
+                    if len(df_mov_a) == 0:
+                        st.warning(f"No hay rutas asignadas para {mov_a_label} el día {dia_comp}.")
+                    else:
+                        for _, row in df_mov_a.iterrows():
+                            renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
 
-                # --- COLUMNA DERECHA: MOVILIDAD B ---
-                with col_right:
-                    st.subheader("🚛 Movilidad B")
-                    idx_b = 1 if len(opciones_mov) > 1 else 0
-                    mov_b_label = st.selectbox("Selecciona Movilidad B:", options=opciones_mov, index=idx_b, key="mov_b")
+            # --- COLUMNA DERECHA: MOVILIDAD B ---
+            with col_right:
+                st.subheader("🚛 Movilidad B")
+                idx_b = 1 if len(opciones_mov) > 1 else 0
+                mov_b_label = st.selectbox("Selecciona Movilidad B:", options=opciones_mov, index=idx_b, key="mov_b")
+                
+                if mov_b_label:
+                    val_orig_b = mapa_mov_original[mov_b_label]
+                    df_mov_b = df_dia_base[df_dia_base[col_mov].astype(str).str.strip() == str(val_orig_b)]
                     
-                    if mov_b_label:
-                        val_orig_b = mapa_mov_original[mov_b_label]
-                        df_mov_b = df_dia_base[df_dia_base[col_mov].astype(str).str.strip() == val_orig_b]
-                        
-                        # Info de jornada si está disponible
-                        if not df_movilidades_raw.empty:
-                            jornada_b = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'].astype(str).str.strip() == str(val_orig_b))]
-                            if not jornada_b.empty:
-                                ing_b = jornada_b.iloc[0]['Ingreso']
-                                sal_b = jornada_b.iloc[0]['Salida']
-                                tot_b = jornada_b.iloc[0]['Total Horas']
-                                st.info(f"⏱️ **Jornada en Planta:** {ing_b} a {sal_b} ({tot_b} hrs)")
+                    # Cargar info de jornada (Vista 3)
+                    if not df_movilidades_raw.empty:
+                        jornada_b = df_movilidades_raw[(df_movilidades_raw['Día'] == dia_comp) & (df_movilidades_raw['Num_Mov'].astype(str).str.strip() == str(val_orig_b))]
+                        if not jornada_b.empty:
+                            ing_b = jornada_b.iloc[0]['Ingreso']
+                            sal_b = jornada_b.iloc[0]['Salida']
+                            tot_b = jornada_b.iloc[0]['Total Horas']
+                            st.info(f"⏱️ **Jornada en Planta:** {ing_b} a {sal_b} ({tot_b} hrs)")
 
-                        st.metric("Rutas Programadas", len(df_mov_b))
+                    st.metric("Rutas Programadas", len(df_mov_b))
 
-                        if len(df_mov_b) == 0:
-                            st.warning(f"No hay rutas registradas para {mov_b_label} el {dia_comp}.")
-                        else:
-                            for _, row in df_mov_b.iterrows():
-                                renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
+                    if len(df_mov_b) == 0:
+                        st.warning(f"No hay rutas asignadas para {mov_b_label} el día {dia_comp}.")
+                    else:
+                        for _, row in df_mov_b.iterrows():
+                            renderizar_tarjeta_ruta(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales)
 
     # ----------------------------------------------------
     # VISTA 3: JORNADA DE MOVILIDADES
@@ -549,7 +530,7 @@ if datos_cargados:
 
         col_map1, col_map2 = st.columns([3, 1])
         with col_map1:
-            st.info("💡 Una vez que el propietario te transfiera el mapa o habilite el permiso 'Público / Cualquier persona con el enlace', se desplegará en este espacio.")
+            st.info("💡 Mapa interactivo de la red logística de Fridolin.")
         with col_map2:
             st.link_button("↗️ Abrir en Google Maps", mapa_directo_url, use_container_width=True)
 
