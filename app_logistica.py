@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import unicodedata
 import urllib.parse
-from google import genai
+import google.generativeai as genai
 
 # ==========================================
 # 1. CONFIGURACIÓN Y PALETA DE COLOR FRIDOLIN
@@ -836,8 +836,9 @@ if datos_cargados:
                     st.divider()
 
                     try:
-                        # Inicializar cliente con la API Key oculta de secrets
-                        client = genai.Client(api_key=api_key_secret)
+                        # CONFIGURACIÓN ESTABLE CON GOOGLE.GENERATIVEAI
+                        genai.configure(api_key=api_key_secret)
+                        model = genai.GenerativeModel('gemini-1.5-flash')
 
                         tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
 
@@ -864,8 +865,8 @@ if datos_cargados:
                                         Eres un experto en logística urbana y optimización de rutas para la empresa pastelera Fridolin en Santa Cruz, Bolivia.
                                         Analiza la siguiente programación de despachos para el día {dia_ia} en la {mov_ia}:
 
-                                        DATOS DE LAS SALIDAS DE LA MOVILIDAD:
-                                        {df_rutas_ia.to_string()}
+                                        DATOS DE LAS SALIDAS DE LA MOVILIDAD (Formato Tabla Markdown):
+                                        {df_rutas_ia.to_markdown(index=False)}
 
                                         Por favor provee:
                                         1. Un análisis crítico del horario de salida y retorno estimado.
@@ -873,10 +874,7 @@ if datos_cargados:
                                         3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
                                         Responde en un tono profesional, claro y directo, usando viñetas.
                                         """
-                                        response = client.models.generate_content(
-                                            model='gemini-1.5-flash',
-                                            contents=prompt_opt,
-                                        )
+                                        response = model.generate_content(prompt_opt)
                                         st.markdown("---")
                                         st.markdown("### 📋 Recomendación Generada:")
                                         st.markdown(response.text)
@@ -893,23 +891,20 @@ if datos_cargados:
                                 else:
                                     with st.spinner("Consultando con IA..."):
                                         prompt_chat = f"""
-                                        Eres el asistente logístico inteligente de la pastelería Fridolin.
+                                        Eres el asistente logístico inteligente de la pastelería Fridolin en Santa Cruz.
                                         Tienes acceso a los siguientes datos actuales del sistema:
 
                                         TABLA DE RUTAS Y DESPACHOS:
-                                        {df_rutas_raw.to_string()}
+                                        {df_rutas_raw.to_markdown(index=False)}
 
                                         TABLA DE JORNADAS Y TURNOS:
-                                        {df_movilidades_raw.to_string()}
+                                        {df_movilidades_raw.to_markdown(index=False)}
 
                                         Pregunta del usuario: {query_ia}
 
-                                        Responde basándote strictly en los datos provistos arriba.
+                                        Responde basándote estrictamente en los datos provistos arriba.
                                         """
-                                        response_chat = client.models.generate_content(
-                                            model='gemini-1.5-flash',
-                                            contents=prompt_chat,
-                                        )
+                                        response_chat = model.generate_content(prompt_chat)
                                         st.markdown("---")
                                         st.markdown("### 🤖 Respuesta del Asistente:")
                                         st.markdown(response_chat.text)
