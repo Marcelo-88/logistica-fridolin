@@ -751,7 +751,6 @@ if datos_cargados:
         else:
             cols_sucursales = [c for c in df_dia_ws.columns if 'Sucursal' in str(c)]
 
-            # Generar texto limpio por movilidad
             mensaje_texto = f"📋 *PROGRAMACIÓN DE RUTAS - {dia_ws.upper()}*\n\n"
             movs_dia = sorted([m for m in df_dia_ws[col_mov].dropna().astype(str).str.strip().unique() if m in ['1','2','3','4','5','6','7','8','9','10']], key=lambda x: int(x))
 
@@ -775,7 +774,6 @@ if datos_cargados:
             st.subheader("📝 Vista Previa del Mensaje:")
             st.text_area("Texto a enviar:", value=mensaje_texto, height=220)
 
-            # Generar enlace
             num_clean = num_telefono.replace("+", "").replace(" ", "").strip()
             mensaje_url = urllib.parse.quote(mensaje_texto)
             wa_link = f"https://wa.me/{num_clean}?text={mensaje_url}"
@@ -813,99 +811,112 @@ if datos_cargados:
         st.components.v1.html(html_iframe, height=620)
 
     # ----------------------------------------------------
-    # VISTA 6: ASISTENTE & OPTIMIZADOR IA
+    # VISTA 6: ASISTENTE & OPTIMIZADOR IA (PROTEGIDO POR PIN)
     # ----------------------------------------------------
     elif menu_opcion == "🤖 6. Asistente & Optimizador IA":
         st.title("🤖 Asistente Logístico Inteligente & Optimizador")
         st.caption("Aprovecha la Inteligencia Artificial para analizar rutas, optimizar la secuencia de entrega y resolver dudas de operación.")
         st.divider()
 
-        # Obtención de la clave API (se evalúa primero en Secrets, luego en campo manual)
-        api_key = st.secrets.get("GEMINI_API_KEY", "")
-        if not api_key:
-            api_key = st.text_input("🔑 Ingrese su API Key completa de Google Gemini (AIzaSy...):", type="password")
+        # Obtener la API Key y el PIN configurados en Secrets
+        api_key_secret = st.secrets.get("GEMINI_API_KEY", "")
+        pin_secret = str(st.secrets.get("ADMIN_PIN", "")).strip()
 
-        if not api_key:
-            st.warning("⚠️ Se requiere una API Key de Google Gemini válida para activar este módulo. Ingrésea arriba o configúrala en `.streamlit/secrets.toml` con la clave GEMINI_API_KEY.")
+        if not api_key_secret:
+            st.error("⚠️ La clave `GEMINI_API_KEY` no está configurada en los Secrets de la aplicación. Por favor, añádela en la configuración de Streamlit Cloud.")
         else:
-            try:
-                # Inicialización con el nuevo SDK oficial `google-genai`
-                client = genai.Client(api_key=api_key)
+            # Control de Acceso por PIN
+            col_pin, _ = st.columns([1, 2])
+            with col_pin:
+                pin_ingresado = st.text_input("🔑 Ingrese el PIN de Acceso Autorizado:", type="password", placeholder="****")
 
-                tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
+            if pin_ingresado:
+                if str(pin_ingresado).strip() == pin_secret:
+                    st.success("✅ Acceso autorizado correctamente.")
+                    st.divider()
 
-                with tab_opt:
-                    st.subheader("💡 Diagnóstico y Optimización de Recorrido")
-                    col_ia1, col_ia2 = st.columns(2)
-                    
-                    with col_ia1:
-                        dia_ia = st.selectbox("📅 Día a analizar:", options=dias_disponibles, key="dia_ia")
-                    with col_ia2:
-                        movs_num = sorted([m for m in df_rutas_raw[col_mov].dropna().astype(str).str.strip().unique() if m in ['1','2','3','4','5','6','7','8','9','10']])
-                        mov_ia = st.selectbox("🚛 Movilidad a analizar:", options=[f"Movilidad {m}" for m in movs_num], key="mov_ia")
+                    try:
+                        # Inicializar cliente con la API Key oculta de secrets
+                        client = genai.Client(api_key=api_key_secret)
 
-                    num_mov_ia = mov_ia.replace("Movilidad ", "").strip()
-                    df_rutas_ia = df_rutas_raw[(df_rutas_raw[col_dia] == dia_ia) & (df_rutas_raw[col_mov].astype(str).str.strip() == num_mov_ia)]
+                        tab_opt, tab_chat = st.tabs(["🚀 Optimizador de Rutas", "💬 Chat Logístico"])
 
-                    if df_rutas_ia.empty:
-                        st.info(f"No hay rutas programadas para {mov_ia} el día {dia_ia}.")
-                    else:
-                        st.write(f"**Rutas encontradas:** {len(df_rutas_ia)}")
-                        if st.button("🪄 Generar Recomendación de Optimización con IA", use_container_width=True):
-                            with st.spinner("Analizando secuencia, tiempos y distribución con IA..."):
-                                prompt_opt = f"""
-                                Eres un experto en logística urbana y optimización de rutas para la empresa pastelera Fridolin en Santa Cruz, Bolivia.
-                                Analiza la siguiente programación de despachos para el día {dia_ia} en la {mov_ia}:
+                        with tab_opt:
+                            st.subheader("💡 Diagnóstico y Optimización de Recorrido")
+                            col_ia1, col_ia2 = st.columns(2)
+                            
+                            with col_ia1:
+                                dia_ia = st.selectbox("📅 Día a analizar:", options=dias_disponibles, key="dia_ia")
+                            with col_ia2:
+                                movs_num = sorted([m for m in df_rutas_raw[col_mov].dropna().astype(str).str.strip().unique() if m in ['1','2','3','4','5','6','7','8','9','10']])
+                                mov_ia = st.selectbox("🚛 Movilidad a analizar:", options=[f"Movilidad {m}" for m in movs_num], key="mov_ia")
 
-                                DATOS DE LAS SALIDAS DE LA MOVILIDAD:
-                                {df_rutas_ia.to_string()}
+                            num_mov_ia = mov_ia.replace("Movilidad ", "").strip()
+                            df_rutas_ia = df_rutas_raw[(df_rutas_raw[col_dia] == dia_ia) & (df_rutas_raw[col_mov].astype(str).str.strip() == num_mov_ia)]
 
-                                Por favor provee:
-                                1. Un análisis crítico del horario de salida y retorno estimado.
-                                2. Evaluación de la secuencia de paradas de sucursales (¿Es eficiente el orden propuesto?).
-                                3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
-                                Responde en un tono profesional, claro y directo, usando viñetas.
-                                """
-                                response = client.models.generate_content(
-                                    model='gemini-2.5-flash',
-                                    contents=prompt_opt,
-                                )
-                                st.markdown("---")
-                                st.markdown("### 📋 Recomendación Generada:")
-                                st.markdown(response.text)
+                            if df_rutas_ia.empty:
+                                st.info(f"No hay rutas programadas para {mov_ia} el día {dia_ia}.")
+                            else:
+                                st.write(f"**Rutas encontradas:** {len(df_rutas_ia)}")
+                                if st.button("🪄 Generar Recomendación de Optimización con IA", use_container_width=True):
+                                    with st.spinner("Analizando secuencia, tiempos y distribución con IA..."):
+                                        prompt_opt = f"""
+                                        Eres un experto en logística urbana y optimización de rutas para la empresa pastelera Fridolin en Santa Cruz, Bolivia.
+                                        Analiza la siguiente programación de despachos para el día {dia_ia} en la {mov_ia}:
 
-                with tab_chat:
-                    st.subheader("💬 Consulta Rápida a la Operación")
-                    st.caption("Realiza cualquier pregunta sobre los datos cargados de rutas, horarios o movilidades.")
+                                        DATOS DE LAS SALIDAS DE LA MOVILIDAD:
+                                        {df_rutas_ia.to_string()}
 
-                    query_ia = st.text_area("Pregunta sobre la logística:", placeholder="Ej: ¿Qué movilidades tienen turnos de madrugada el día Lunes y qué sucursales atienden?")
+                                        Por favor provee:
+                                        1. Un análisis crítico del horario de salida y retorno estimado.
+                                        2. Evaluación de la secuencia de paradas de sucursales (¿Es eficiente el orden propuesto?).
+                                        3. Sugerencias operativas breves para evitar retrasos y minimizar consumo de combustible.
+                                        Responde en un tono profesional, claro y directo, usando viñetas.
+                                        """
+                                        response = client.models.generate_content(
+                                            model='gemini-2.5-flash',
+                                            contents=prompt_opt,
+                                        )
+                                        st.markdown("---")
+                                        st.markdown("### 📋 Recomendación Generada:")
+                                        st.markdown(response.text)
 
-                    if st.button("🔍 Consultar IA", use_container_width=True):
-                        if not query_ia.strip():
-                            st.warning("Escribe una consulta antes de enviar.")
-                        else:
-                            with st.spinner("Consultando con IA..."):
-                                prompt_chat = f"""
-                                Eres el asistente logístico inteligente de la pastelería Fridolin.
-                                Tienes acceso a los siguientes datos actuales del sistema:
+                        with tab_chat:
+                            st.subheader("💬 Consulta Rápida a la Operación")
+                            st.caption("Realiza cualquier pregunta sobre los datos cargados de rutas, horarios o movilidades.")
 
-                                TABLA DE RUTAS Y DESPACHOS:
-                                {df_rutas_raw.to_string()}
+                            query_ia = st.text_area("Pregunta sobre la logística:", placeholder="Ej: ¿Qué movilidades tienen turnos de madrugada el día Lunes y qué sucursales atienden?")
 
-                                TABLA DE JORNADAS Y TURNOS:
-                                {df_movilidades_raw.to_string()}
+                            if st.button("🔍 Consultar IA", use_container_width=True):
+                                if not query_ia.strip():
+                                    st.warning("Escribe una consulta antes de enviar.")
+                                else:
+                                    with st.spinner("Consultando con IA..."):
+                                        prompt_chat = f"""
+                                        Eres el asistente logístico inteligente de la pastelería Fridolin.
+                                        Tienes acceso a los siguientes datos actuales del sistema:
 
-                                Pregunta del usuario: {query_ia}
+                                        TABLA DE RUTAS Y DESPACHOS:
+                                        {df_rutas_raw.to_string()}
 
-                                Responde basándote estrictamente en los datos provistos arriba.
-                                """
-                                response_chat = client.models.generate_content(
-                                    model='gemini-2.5-flash',
-                                    contents=prompt_chat,
-                                )
-                                st.markdown("---")
-                                st.markdown("### 🤖 Respuesta del Asistente:")
-                                st.markdown(response_chat.text)
+                                        TABLA DE JORNADAS Y TURNOS:
+                                        {df_movilidades_raw.to_string()}
 
-            except Exception as e_ia:
-                st.error(f"Error al conectar con el servicio de IA: {e_ia}")
+                                        Pregunta del usuario: {query_ia}
+
+                                        Responde basándote estrictamente en los datos provistos arriba.
+                                        """
+                                        response_chat = client.models.generate_content(
+                                            model='gemini-2.5-flash',
+                                            contents=prompt_chat,
+                                        )
+                                        st.markdown("---")
+                                        st.markdown("### 🤖 Respuesta del Asistente:")
+                                        st.markdown(response_chat.text)
+
+                    except Exception as e_ia:
+                        st.error(f"Error al conectar con el servicio de IA: {e_ia}")
+                else:
+                    st.error("❌ PIN incorrecto. Ingrese el PIN de autorización para acceder al Asistente e IA.")
+            else:
+                st.info("🔒 Ingrese el PIN de 4 dígitos para habilitar las funciones del Asistente Inteligente.")
