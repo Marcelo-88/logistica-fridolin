@@ -2,108 +2,148 @@ import streamlit as st
 import pandas as pd
 
 # ==========================================
-# 1. CONFIGURACIÓN Y ESTILOS AVANZADOS
+# 1. CONFIGURACIÓN Y PALETA DE COLOR FRIDOLIN
 # ==========================================
 st.set_page_config(
     page_title="Control Logístico | Fridolin",
-    page_icon="🚚",
+    page_icon="🍰",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados
+# Estilos CSS personalizados con la línea gráfica oficial de Fridolin
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-    
-    /* Contenedor de Tarjeta Estándar */
-    .route-card {
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 18px;
-        margin-bottom: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+    /* Tipografía Global y Fondo de Aplicación */
+    html, body, [class*="css"], .stApp {
+        font-family: 'Poppins', sans-serif !important;
+        background-color: #fdfbf7 !important;
+        color: #2c1e1e;
     }
 
-    /* Contenedor de Tarjeta Madrugada / Noche (< 7:00 AM o >= 22:00) */
-    .route-card-madrugada {
-        background-color: #faf5ff;
-        border: 1.5px solid #c084fc;
+    .block-container { padding-top: 1.2rem; padding-bottom: 2.5rem; }
+    
+    /* Headers / Títulos Principales */
+    h1, h2, h3 {
+        color: #800c14 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Estilo del Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #ffffff !important;
+        border-right: 1px solid #f1e9df;
+    }
+
+    /* Contenedor de Tarjeta Estándar (Fridolin) */
+    .route-card {
+        background-color: #ffffff;
+        border: 1px solid #eeddd0;
+        border-left: 5px solid #800c14;
         border-radius: 12px;
         padding: 18px;
         margin-bottom: 16px;
-        box-shadow: 0 3px 8px rgba(192, 132, 252, 0.15);
+        box-shadow: 0 4px 10px rgba(128, 12, 20, 0.04);
+    }
+
+    /* Contenedor de Tarjeta Madrugada / Turno Noche */
+    .route-card-madrugada {
+        background-color: #faf5f5;
+        border: 1px solid #e5c3c6;
+        border-left: 5px solid #4a070c;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 12px rgba(74, 7, 12, 0.08);
     }
     
-    /* Badges */
+    /* Badges / Etiquetas con estilo Fridolin */
     .badge-day {
-        background-color: #eff6ff;
-        color: #1d4ed8;
-        padding: 4px 10px;
+        background-color: #fce8e9;
+        color: #800c14;
+        padding: 5px 12px;
         border-radius: 20px;
         font-weight: 600;
         font-size: 0.85rem;
     }
     .badge-cat {
-        background-color: #f0fdf4;
-        color: #15803d;
-        padding: 4px 10px;
+        background-color: #fef7e7;
+        color: #8a6411;
+        padding: 5px 12px;
         border-radius: 20px;
         font-weight: 600;
         font-size: 0.85rem;
+        border: 1px solid #f5e4b8;
     }
     .badge-mov {
-        background-color: #fef3c7;
-        color: #b45309;
-        padding: 4px 10px;
+        background-color: #f4efe9;
+        color: #5c4436;
+        padding: 5px 12px;
         border-radius: 20px;
         font-weight: 600;
         font-size: 0.85rem;
     }
     
-    /* Badge Horario Normal */
+    /* Badges de Horarios */
     .badge-time {
-        background-color: #e0f2fe;
-        color: #0369a1;
-        padding: 6px 12px;
+        background-color: #800c14;
+        color: #ffffff;
+        padding: 6px 14px;
         border-radius: 8px;
-        font-weight: 700;
+        font-weight: 600;
         font-size: 0.88rem;
         display: inline-block;
         margin-top: 8px;
         margin-bottom: 8px;
     }
 
-    /* Badge Horario Madrugada / Nocturno */
     .badge-time-madrugada {
-        background-color: #f3e8ff;
-        color: #6b21a8;
-        padding: 6px 12px;
+        background-color: #3b0609;
+        color: #f7dcdb;
+        padding: 6px 14px;
         border-radius: 8px;
-        font-weight: 700;
+        font-weight: 600;
         font-size: 0.88rem;
         display: inline-block;
         margin-top: 8px;
         margin-bottom: 8px;
-        border: 1px solid #d8b4fe;
+        border: 1px solid #6e1016;
     }
     
-    /* Paradas */
+    /* Chips de Paradas/Sucursales */
     .stop-chip {
         display: inline-block;
-        background-color: #ffffff;
-        border: 1px solid #cbd5e1;
+        background-color: #fdfbf7;
+        border: 1px solid #e3d5c5;
         border-radius: 8px;
         padding: 6px 12px;
         margin: 4px 2px;
         font-weight: 500;
-        color: #334155;
+        color: #2c1e1e;
     }
     .stop-arrow {
-        color: #94a3b8;
+        color: #c89b3c;
         font-weight: bold;
         margin: 0 4px;
+    }
+
+    /* Personalización de Métricas y Botones Streamlit */
+    [data-testid="stMetricValue"] {
+        color: #800c14 !important;
+        font-weight: 700 !important;
+    }
+
+    .stButton>button {
+        background-color: #800c14 !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }
+    .stButton>button:hover {
+        background-color: #63080e !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -116,7 +156,6 @@ def es_salida_madrugada(hora_str):
         hora_clean = str(hora_str).strip()
         partes = hora_clean.split(":")
         hora_num = int(partes[0])
-        # Considera Madrugada si es antes de las 7:00 AM O a partir de las 22:00 (10 PM)
         return hora_num < 7 or hora_num >= 22
     except Exception:
         return False
@@ -135,8 +174,7 @@ URL_SUCURSALES = f"{PUB_BASE}/pub?single=true&gid={GID_SUCURSALES}&output=csv"
 def cargar_datos_logistica():
     df_raw = pd.read_csv(URL_RUTAS, header=None)
     
-    # --- RUTAS DE DISTRIBUCIÓN ---
-    # Tomamos desde Col A hasta Col M (0 a 12 de índice)
+    # --- RUTAS DE DISTRIBUCIÓN (Columnas A a M) ---
     df_rutas = df_raw.iloc[:, :13].copy()
     df_rutas.columns = df_rutas.iloc[0]
     df_rutas = df_rutas[1:].reset_index(drop=True).dropna(how="all")
@@ -194,11 +232,11 @@ except Exception as e:
     datos_cargados = False
 
 # ==========================================
-# 3. FILTROS Y SIDEBAR
+# 3. FILTROS Y SIDEBAR (ESTILO FRIDOLIN)
 # ==========================================
 if datos_cargados:
-    st.sidebar.title("🚚 Logística Fridolin")
-    st.sidebar.caption("Panel de Control Operativo 2026")
+    st.sidebar.markdown("<h2 style='color: #800c14; margin-bottom: 0;'>🧁 Fridolin</h2>", unsafe_allow_html=True)
+    st.sidebar.caption("Sistema de Control Logístico y Distribución")
     st.sidebar.divider()
 
     st.sidebar.subheader("🎯 Filtros Rápidos")
@@ -236,7 +274,7 @@ if datos_cargados:
         if cats_seleccionadas:
             df_filtrado = df_filtrado[df_filtrado[col_cat].isin(cats_seleccionadas)]
 
-    # 3. FILTRO POR HORARIO DE SALIDA (Aplica a Columnas K y L)
+    # 3. Filtro Horario
     filtro_horario = st.sidebar.selectbox(
         "⏰ Horario de Salida:",
         options=["Todas las rutas", "🌙 Madrugada / Noche (22:00 - 07:00 AM)", "☀️ Mañana / Día (07:00 AM - 21:59)"]
@@ -252,7 +290,7 @@ if datos_cargados:
             if not df_mov_filtrado.empty:
                 df_mov_filtrado = df_mov_filtrado[~df_mov_filtrado['Ingreso'].apply(es_salida_madrugada)]
 
-    # 4. Buscador rápido por sucursal
+    # 4. Buscador por sucursal
     busqueda = st.sidebar.text_input("🔍 Buscar Sucursal:", placeholder="Ej. Hipermaxi, Urubó...")
     if busqueda:
         mask = df_filtrado.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)
@@ -275,16 +313,16 @@ if datos_cargados:
 if datos_cargados:
 
     # ----------------------------------------------------
-    # VISTA 1: TARJETAS DE RUTA (HORARIOS DE COLS K Y L)
+    # VISTA 1: TARJETAS DE RUTA Y HORARIOS (ESTILO FRIDOLIN)
     # ----------------------------------------------------
     if menu_opcion == "🎴 1. Tarjetas de Ruta y Horarios":
-        st.title("🚚 Planificación de Rutas y Horarios Estimados")
-        st.caption("Secuencia visual de paradas con hora de salida (Col. K) y retorno (Col. L) por viaje.")
+        st.title("🚚 Planificación de Rutas y Horarios")
+        st.caption("Gestión operativa de despachos desde Planta hacia Sucursales.")
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Rutas en Vista", f"{len(df_filtrado)}")
+        col1.metric("Rutas Activas", f"{len(df_filtrado)}")
         col2.metric("Categorías", f"{df_filtrado[col_cat].nunique() if col_cat else 0}")
-        col3.metric("Días Filtrados", f"{df_filtrado[col_dia].nunique() if col_dia else 0}")
+        col3.metric("Días Visibles", f"{df_filtrado[col_dia].nunique() if col_dia else 0}")
         st.divider()
 
         cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in c]
@@ -292,7 +330,7 @@ if datos_cargados:
         col_com = next((c for c in df_filtrado.columns if 'Comentario' in c), None)
 
         if len(df_filtrado) == 0:
-            st.info("No hay rutas que coincidan con los filtros seleccionados.")
+            st.info("No se encontraron rutas para los filtros seleccionados.")
 
         for idx, row in df_filtrado.iterrows():
             dia = row.get(col_dia, '')
@@ -301,7 +339,7 @@ if datos_cargados:
             frec = row.get(col_frec, '')
             comentario = str(row.get(col_com, '')).strip()
 
-            # Extraer directamente de las columnas K y L
+            # Extracción desde Columnas K y L
             hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
             hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
 
@@ -310,7 +348,7 @@ if datos_cargados:
             if not hora_retorno or hora_retorno in ['nan', 'None']:
                 hora_retorno = "Sin especificar"
 
-            # Determinar si es Madrugada/Noche (< 7:00 AM o >= 22:00)
+            # Madrugada / Noche (< 7:00 AM o >= 22:00)
             es_madrugada = es_salida_madrugada(hora_salida)
 
             card_class = "route-card-madrugada" if es_madrugada else "route-card"
@@ -321,16 +359,16 @@ if datos_cargados:
             html_paradas = ' <span class="stop-arrow">➔</span> '.join([f'<span class="stop-chip">📍 {p}</span>' for p in paradas])
 
             badge_mov_html = f'<span class="badge-mov">🚚 Movilidad {mov}</span>' if mov and mov not in ['nan', 'None'] else ''
-            nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#d97706; background-color:#fffbeb; padding:6px 10px; border-radius:6px;">💡 <b>Nota:</b> {comentario}</div>' if comentario and comentario not in ['nan', 'None'] else ''
+            nota_html = f'<div style="margin-top:10px; font-size:0.85rem; color:#8a6411; background-color:#fef7e7; padding:6px 12px; border-radius:6px; border:1px solid #f5e4b8;">💡 <b>Nota:</b> {comentario}</div>' if comentario and comentario not in ['nan', 'None'] else ''
 
             card_html = (
                 f'<div class="{card_class}">'
                 f'<div style="display:flex; justify-content:space-between; align-items:center;">'
                 f'<div><span class="badge-day">📅 {dia}</span> <span class="badge-cat">📦 {cat}</span> {badge_mov_html}</div>'
-                f'<small style="color:#64748b; font-weight:500;">{frec}</small>'
+                f'<small style="color:#786565; font-weight:500;">{frec}</small>'
                 f'</div>'
                 f'<div><span class="{badge_time_class}">{icono_salida}: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
-                f'<div style="margin-top:8px;"><strong style="color:#475569; font-size:0.9rem;">Secuencia de Recorrido:</strong><br>{html_paradas}</div>'
+                f'<div style="margin-top:8px;"><strong style="color:#523e3e; font-size:0.9rem;">Secuencia de Recorrido:</strong><br>{html_paradas}</div>'
                 f'{nota_html}'
                 f'</div>'
             )
@@ -342,7 +380,7 @@ if datos_cargados:
     # ----------------------------------------------------
     elif menu_opcion == "⏱️ 2. Jornada de Movilidades":
         st.title("⏱️ Turnos y Horarios por Movilidad")
-        st.caption("Detalle completo de turnos por día para los choferes y unidades.")
+        st.caption("Programación de choferes y unidades de transporte.")
         st.divider()
 
         if not df_mov_filtrado.empty:
@@ -359,39 +397,38 @@ if datos_cargados:
                         for _, row in df_dia.iterrows():
                             es_mad = es_salida_madrugada(row["Ingreso"])
                             ico = "🌙 Madrugada" if es_mad else "🚀 Salida"
-                            col_txt = "#6b21a8" if es_mad else "#0284c7"
+                            col_txt = "#4a070c" if es_mad else "#800c14"
                             
                             mov_item_html = (
-                                f'<div style="background-color:#ffffff; border:1px solid #e2e8f0; padding:12px 16px; border-radius:10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">'
-                                f'<div><strong style="color:#1e293b; font-size:1.05rem;">🚛 {row["Movilidad"]}</strong><br>'
+                                f'<div style="background-color:#ffffff; border:1px solid #eeddd0; border-left:4px solid #800c14; padding:12px 16px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">'
+                                f'<div><strong style="color:#2c1e1e; font-size:1.05rem;">🚛 {row["Movilidad"]}</strong><br>'
                                 f'<span style="color:{col_txt}; font-size:0.95rem;">{ico}: <b>{row["Ingreso"]}</b> &nbsp;|&nbsp; 🏁 Retorno: <b>{row["Salida"]}</b></span></div>'
-                                f'<div style="background-color:#f1f5f9; padding:6px 12px; border-radius:8px; font-weight:700; color:#0f172a;">⏳ {row["Total Horas"]} hrs</div>'
+                                f'<div style="background-color:#fce8e9; color:#800c14; padding:6px 14px; border-radius:8px; font-weight:700;">⏳ {row["Total Horas"]} hrs</div>'
                                 f'</div>'
                             )
                             st.markdown(mov_item_html, unsafe_allow_html=True)
                     
                     with col_right:
                         st.metric("Movilidades en Servicio", len(df_dia))
-                        st.info(f"Programación de salidas y retornos para el **{dia}**.")
+                        st.info(f"Programación diaria de transporte para el **{dia}**.")
         else:
-            st.warning("No hay datos de movilidades que coincidan con los filtros seleccionados.")
+            st.warning("No hay datos de movilidades disponibles para los filtros actuales.")
 
     # ----------------------------------------------------
-    # VISTA 3: MAPA DE SUCURSALES (FIX DEFINITIVO)
+    # VISTA 3: MAPA DE SUCURSALES
     # ----------------------------------------------------
     elif menu_opcion == "🗺️ 3. Mapa de Sucursales":
         st.title("🗺️ Mapa Geográfico de Sucursales")
-        st.caption("Ubicación interactiva con cobertura de Montero y Santa Cruz.")
+        st.caption("Ubicación e interacción espacial con la red de sucursales Fridolin.")
         st.divider()
 
         MAP_ID = "1vBn4ggLZ2RCm3mSgRoBqMDI_CAlx6wA"
-
         mapa_embed_url = f"https://www.google.com/maps/d/embed?mid={MAP_ID}&ehbc=2E312F"
         mapa_directo_url = f"https://www.google.com/maps/d/viewer?mid={MAP_ID}"
 
         col_map1, col_map2 = st.columns([3, 1])
         with col_map1:
-            st.info("💡 Si el mapa no carga, verifica que el archivo en Google My Maps esté configurado como Público ('Cualquier persona con el enlace').")
+            st.info("💡 Una vez que el propietario te transfiera el mapa o habilite el permiso 'Público / Cualquier persona con el enlace', se desplegará en este espacio.")
         with col_map2:
             st.link_button("↗️ Abrir en Google Maps", mapa_directo_url, use_container_width=True)
 
