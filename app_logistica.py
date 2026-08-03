@@ -284,9 +284,13 @@ def cargar_datos_logistica():
             if mov in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']:
                 dia_asignado = dia_actual
                 
-                # Asignación corregida: Solo mover la entrada de Domingo 22pm a la jornada del LUNES
+                # Regla 1: Entrada Domingo 22:00 -> Jornada del Lunes
                 if mov == '1' and dia_actual == 'Domingo' and ingreso.startswith('22:'):
                     dia_asignado = 'Lunes'
+
+                # Regla 2: Entrada Viernes 22:00 -> Turno que transcurre el Sábado
+                elif mov == '1' and dia_actual == 'Viernes' and ingreso.startswith('22:'):
+                    dia_asignado = 'Sábado'
 
                 bloques_movilidades.append({
                     'Día': dia_asignado,
@@ -534,7 +538,7 @@ def renderizar_tarjeta_unica_movilidad(df_mov_rutas, jornada_info, mov_label, di
     )
     st.markdown(tarjeta_general_html, unsafe_allow_html=True)
 
-# Renderizador Tarjetas Semanales Resumen Vista 3 (Ajustado con Consolidación por Día)
+# Renderizador Tarjetas Semanales Resumen Vista 3
 def renderizar_tarjeta_resumen_semanal_movilidad(df_movilidades_all, num_mov):
     df_unit = df_movilidades_all[df_movilidades_all['Num_Mov'].astype(str).str.strip() == str(num_mov)]
     
@@ -550,7 +554,6 @@ def renderizar_tarjeta_resumen_semanal_movilidad(df_movilidades_all, num_mov):
     for d in dias_semana:
         rows_d = df_unit[df_unit['Día'] == d]
         
-        # Sumar todas las horas del mismo día (en caso de múltiples turnos)
         horas_dia_dec = 0.0
         hrs_str_display = ""
         
