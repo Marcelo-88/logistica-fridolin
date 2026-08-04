@@ -114,6 +114,9 @@ st.markdown("""
         font-weight: 600;
         font-size: 0.82rem;
         border: 1px solid #f5e4b8;
+        display: inline-block;
+        margin-right: 4px;
+        margin-bottom: 4px;
     }
     .badge-mov {
         background-color: #f4efe9;
@@ -250,7 +253,6 @@ def generar_respuesta_ia(prompt):
         'gemini-1.5-flash'
     ]
     
-    # Intenta obtener la lista activa descartando modelos de Voz/TTS
     try:
         modelos_api = [
             m.name for m in genai.list_models() 
@@ -259,11 +261,10 @@ def generar_respuesta_ia(prompt):
             and 'audio' not in m.name.lower()
         ]
         if modelos_api:
-            # Priorizar modelos Flash
             modelos_flash = [m for m in modelos_api if 'flash' in m.lower()]
             modelos_candidatos = modelos_flash + [m for m in modelos_api if m not in modelos_flash]
     except Exception:
-        pass  # Si falla list_models usa la lista estática candidatos
+        pass
 
     ultimo_error = None
     for mod in modelos_candidatos:
@@ -314,6 +315,49 @@ def cargar_datos_logistica():
     col_d = next((c for c in df_rutas.columns if any(k in str(c).lower() for k in ['dí', 'dia'])), df_rutas.columns[0])
     df_rutas[col_d] = df_rutas[col_d].apply(normalizar_dia)
 
+    # Identificación de columnas clave
+    col_c = next((c for c in df_rutas.columns if 'cat' in str(c).lower()), None)
+    col_m = next((c for c in df_rutas.columns if 'mov' in str(c).lower()), df_rutas.columns[13] if len(df_rutas.columns)>=14 else None)
+    col_hs = next((c for c in df_rutas.columns if any(k in str(c).lower() for k in ['hora_sal', 'salida'])), None)
+    col_hr = next((c for c in df_rutas.columns if any(k in str(c).lower() for k in ['hora_ret', 'retorno'])), None)
+    col_coment = next((c for c in df_rutas.columns if 'comentario' in str(c).lower()), None)
+    col_frecuen = next((c for c in df_rutas.columns if 'frec' in str(c).lower()), None)
+    cols_sucs = [c for c in df_rutas.columns if 'sucursal' in str(c).lower()]
+
+    # Crear clave de secuencia única para validar recorridos idénticos
+    df_rutas['_Secuencia_Key'] = df_rutas[cols_sucs].fillna('').apply(
+        lambda r: ' -> '.join([str(x).strip() for x in r if str(x).strip() not in ['', 'nan', 'None']]), axis=1
+    )
+
+    # AGRUPAMIENTO DE RUTAS DUPLICADAS (Mismo Día, Movilidad, Hora Salida, Hora Retorno y Secuencia)
+    group_cols = [col_d, col_m, col_hs, col_hr, '_Secuencia_Key']
+    group_cols = [c for c in group_cols if c in df_rutas.columns]
+
+    def combinar_categorias(x):
+        cats = sorted(list(set([str(v).strip() for v in x if pd.notna(v) and str(v).strip() not in ['', 'nan', 'None']])))
+        return list(cats)
+
+    def combinar_textos(x):
+        items = list(dict.fromkeys([str(v).strip() for v in x if pd.notna(v) and str(v).strip() not in ['', 'nan', 'None']]))
+        return ' | '.join(items)
+
+    agg_dict = {}
+    if col_c:
+        agg_dict[col_c] = combinar_categorias
+    if col_coment:
+        agg_dict[col_coment] = combinar_textos
+    if col_frecuen:
+        agg_dict[col_frecuen] = combinar_textos
+
+    for col in cols_sucs:
+        agg_dict[col] = 'first'
+
+    for col in df_rutas.columns:
+        if col not in group_cols and col not in agg_dict:
+            agg_dict[col] = 'first'
+
+    df_rutas_unificadas = df_rutas.groupby(group_cols, as_index=False).agg(agg_dict)
+
     # --- JORNADAS Y HORARIOS DE MOVILIDADES ---
     bloques_movilidades = []
     if df_raw.shape[1] >= 20:
@@ -359,7 +403,7 @@ def cargar_datos_logistica():
     except Exception:
         df_sucursales = pd.DataFrame()
 
-    return df_rutas, df_movilidades, df_sucursales
+    return df_rutas_unificadas, df_movilidades, df_sucursales
 
 try:
     df_rutas_raw, df_movilidades_raw, df_sucursales_raw = cargar_datos_logistica()
@@ -437,14 +481,27 @@ if datos_cargados:
             df_mov_filtrado = df_mov_filtrado[df_mov_filtrado['Día'].isin(dias_seleccionados)]
 
     if col_cat and col_cat in df_rutas_raw.columns:
-        cats_disponibles = sorted([c for c in df_rutas_raw[col_cat].unique() if c and str(c).strip() not in ['nan', 'None']])
+        # Extraer todas las categorías únicas incluso de las listas agrupadas
+        todas_cats = set()
+        for c_item in df_rutas_raw[col_cat].dropna():
+            if isinstance(c_item, list):
+                todas_cats.update(c_item)
+            else:
+                todas_cats.add(str(c_item).strip())
+        
+        cats_disponibles = sorted([c for c in todas_cats if c and str(c).strip() not in ['nan', 'None']])
         cats_seleccionadas = st.sidebar.multiselect(
             "📦 Categoría(s):",
             options=cats_disponibles,
             placeholder="Todas las categorías"
         )
         if cats_seleccionadas:
-            df_filtrado = df_filtrado[df_filtrado[col_cat].isin(cats_seleccionadas)]
+            def coincide_categoria(val):
+                if isinstance(val, list):
+                    return any(c in cats_seleccionadas for c in val)
+                return val in cats_seleccionadas
+
+            df_filtrado = df_filtrado[df_filtrado[col_cat].apply(coincide_categoria)]
 
     filtro_horario = st.sidebar.selectbox(
         "⏰ Horario de Salida:",
@@ -479,10 +536,16 @@ if datos_cargados:
 # Renderizador individual
 def renderizar_tarjeta_individual(row, col_dia, col_cat, col_mov, col_frec, col_com, col_h_salida, col_h_retorno, cols_sucursales):
     dia = row.get(col_dia, '')
-    cat = row.get(col_cat, '')
+    cat_val = row.get(col_cat, '')
     mov = row.get(col_mov, '')
     frec = row.get(col_frec, '')
     comentario = str(row.get(col_com, '')).strip()
+
+    # Formatear badges de categorías
+    if isinstance(cat_val, list):
+        badges_cat_html = "".join([f'<span class="badge-cat">📦 {c}</span>' for c in cat_val])
+    else:
+        badges_cat_html = f'<span class="badge-cat">📦 {cat_val}</span>' if cat_val else ''
 
     hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
     hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
@@ -508,7 +571,7 @@ def renderizar_tarjeta_individual(row, col_dia, col_cat, col_mov, col_frec, col_
     card_html = (
         f'<div class="{card_class}">'
         f'<div style="display:flex; justify-content:space-between; align-items:center;">'
-        f'<div><span class="badge-day">📅 {dia}</span> <span class="badge-cat">📦 {cat}</span> {badge_mov_html}</div>'
+        f'<div><span class="badge-day">📅 {dia}</span> {badges_cat_html} {badge_mov_html}</div>'
         f'<small style="color:#786565; font-weight:500;">{frec}</small>'
         f'</div>'
         f'<div><span class="{badge_time_class}">{icono_salida}: <b>{hora_salida}</b> &nbsp;|&nbsp; 🏁 Retorno Estimado: <b>{hora_retorno}</b></span></div>'
@@ -535,9 +598,14 @@ def renderizar_tarjeta_unica_movilidad(df_mov_rutas, jornada_info, mov_label, di
 
     salidas_html_list = []
     for idx, row in df_mov_rutas.iterrows():
-        cat = row.get(col_cat, '')
+        cat_val = row.get(col_cat, '')
         frec = row.get(col_frec, '')
         comentario = str(row.get(col_com, '')).strip()
+
+        if isinstance(cat_val, list):
+            badges_cat_html = "".join([f'<span class="badge-cat">📦 {c}</span>' for c in cat_val])
+        else:
+            badges_cat_html = f'<span class="badge-cat">📦 {cat_val}</span>' if cat_val else ''
 
         hora_salida = row.get(col_h_salida, 'Sin especificar') if col_h_salida else 'Sin especificar'
         hora_retorno = row.get(col_h_retorno, 'Sin especificar') if col_h_retorno else 'Sin especificar'
@@ -560,7 +628,7 @@ def renderizar_tarjeta_unica_movilidad(df_mov_rutas, jornada_info, mov_label, di
         salida_html = (
             f'<div class="{block_class}">'
             f'<div style="display:flex; justify-content:space-between; align-items:center;">'
-            f'<div><span class="badge-cat">📦 {cat}</span></div>'
+            f'<div>{badges_cat_html}</div>'
             f'<small style="color:#786565; font-size:0.8rem;">{frec}</small>'
             f'</div>'
             f'<div style="margin-top:4px;"><span class="{badge_time_class}">{icono}: <b>{hora_salida}</b> &nbsp;|&nbsp; Retorno: <b>{hora_retorno}</b></span></div>'
@@ -645,13 +713,24 @@ if datos_cargados:
         st.title("🚚 Planificación de Rutas y Horarios")
         st.caption("Gestión operativa de despachos desde Planta hacia Sucursales.")
 
+        # Conteo total de categorías únicas
+        num_cats = 0
+        if col_cat and not df_filtrado.empty:
+            cats_set = set()
+            for val in df_filtrado[col_cat]:
+                if isinstance(val, list):
+                    cats_set.update(val)
+                elif val:
+                    cats_set.add(str(val))
+            num_cats = len(cats_set)
+
         col1, col2, col3 = st.columns(3)
         col1.metric("Rutas Activas", f"{len(df_filtrado)}")
-        col2.metric("Categorías", f"{df_filtrado[col_cat].nunique() if col_cat else 0}")
+        col2.metric("Categorías", f"{num_cats}")
         col3.metric("Días Visibles", f"{df_filtrado[col_dia].nunique() if col_dia else 0}")
         st.divider()
 
-        cols_sucursales = [c for c in df_filtrado.columns if 'Sucursal' in str(c)]
+        cols_sucursales = [c for c in df_filtrado.columns if 'sucursal' in str(c).lower()]
         col_frec = next((c for c in df_filtrado.columns if 'frec' in str(c).lower()), None)
         col_com = next((c for c in df_filtrado.columns if 'comentario' in str(c).lower()), None)
 
@@ -668,7 +747,7 @@ if datos_cargados:
         st.title("⚖️ Comparador Lado a Lado de Movilidades")
         st.caption("Compara la jornada general y todas las salidas de dos unidades en una sola vista consolidada.")
 
-        cols_sucursales = [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
+        cols_sucursales = [c for c in df_rutas_raw.columns if 'sucursal' in str(c).lower()]
         col_frec = next((c for c in df_rutas_raw.columns if 'frec' in str(c).lower()), None)
         col_com = next((c for c in df_rutas_raw.columns if 'comentario' in str(c).lower()), None)
         
@@ -676,7 +755,7 @@ if datos_cargados:
         movs_validas = sorted([m for m in movs_valores if m in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']])
 
         if not movs_validas:
-            st.warning("⚠️ No se encontraron números de movilidad válidos en la columna N.")
+            st.warning("⚠️ No se encontraron números de movilidad válidos en la columna correspondiente.")
         else:
             opciones_mov = [f"Movilidad {m}" for m in movs_validas]
             mapa_mov_original = {f"Movilidad {m}": m for m in movs_validas}
@@ -792,7 +871,7 @@ if datos_cargados:
         if df_dia_ws.empty:
             st.warning(f"No hay rutas registradas para el día {dia_ws}.")
         else:
-            cols_sucursales = [c for c in df_dia_ws.columns if 'Sucursal' in str(c)]
+            cols_sucursales = [c for c in df_dia_ws.columns if 'sucursal' in str(c).lower()]
 
             mensaje_texto = f"📋 *PROGRAMACIÓN DE RUTAS - {dia_ws.upper()}*\n\n"
             movs_dia = sorted([m for m in df_dia_ws[col_mov].dropna().astype(str).str.strip().unique() if m in ['1','2','3','4','5','6','7','8','9','10']], key=lambda x: int(x))
@@ -802,14 +881,15 @@ if datos_cargados:
                 mensaje_texto += f"🚚 *MOVILIDAD {m}*\n"
 
                 for idx, r in df_m.iterrows():
-                    cat = r.get(col_cat, 'Ruta')
+                    cat_val = r.get(col_cat, 'Ruta')
+                    cat_str = ", ".join(cat_val) if isinstance(cat_val, list) else cat_val
                     h_sal = r.get(col_h_salida, 'N/A')
                     h_ret = r.get(col_h_retorno, 'N/A')
 
                     paradas = [str(r[c]).strip() for c in cols_sucursales if str(r[c]).strip() not in ['', 'nan', 'None']]
                     cadena_paradas = " ➔ ".join(paradas)
 
-                    mensaje_texto += f"• *{cat}:* {cadena_paradas}\n"
+                    mensaje_texto += f"• *[{cat_str}]:* {cadena_paradas}\n"
                     mensaje_texto += f"  ⏰ Salida: {h_sal} | Retorno: {h_ret}\n"
                 
                 mensaje_texto += "\n"
@@ -900,11 +980,12 @@ if datos_cargados:
                                 st.write(f"**Rutas encontradas:** {len(df_rutas_ia)}")
                                 if st.button("🪄 Generar Recomendación de Optimización con IA", use_container_width=True):
                                     with st.spinner("Analizando secuencia y tiempos con IA..."):
-                                        cols_suck = [c for c in df_rutas_ia.columns if 'Sucursal' in str(c)]
+                                        cols_suck = [c for c in df_rutas_ia.columns if 'sucursal' in str(c).lower()]
                                         resumen_lineas = []
                                         for _, r in df_rutas_ia.iterrows():
                                             p = [str(r[c]).strip() for c in cols_suck if str(r[c]).strip() not in ['', 'nan', 'None']]
-                                            resumen_lineas.append(f"Cat: {r.get(col_cat,'')}, Salida: {r.get(col_h_salida,'')}, Retorno: {r.get(col_h_retorno,'')}, Paradas: {' -> '.join(p)}")
+                                            cat_str = ", ".join(r.get(col_cat, [])) if isinstance(r.get(col_cat, ''), list) else r.get(col_cat, '')
+                                            resumen_lineas.append(f"Cat: {cat_str}, Salida: {r.get(col_h_salida,'')}, Retorno: {r.get(col_h_retorno,'')}, Paradas: {' -> '.join(p)}")
                                         
                                         datos_txt = "\n".join(resumen_lineas)
 
@@ -936,12 +1017,13 @@ if datos_cargados:
                                     st.warning("Escribe una consulta antes de enviar.")
                                 else:
                                     with st.spinner("Consultando con IA..."):
-                                        cols_suck = [c for c in df_rutas_raw.columns if 'Sucursal' in str(c)]
+                                        cols_suck = [c for c in df_rutas_raw.columns if 'sucursal' in str(c).lower()]
                                         rutas_resumidas = []
                                         for _, r in df_rutas_raw.head(100).iterrows():
                                             p = [str(r[c]).strip() for c in cols_suck if str(r[c]).strip() not in ['', 'nan', 'None']]
                                             if p:
-                                                rutas_resumidas.append(f"Día:{r.get(col_dia,'')} | Mov:{r.get(col_mov,'')} | Cat:{r.get(col_cat,'')} | Sal:{r.get(col_h_salida,'')} | Ret:{r.get(col_h_retorno,'')} | Ruta:{'->'.join(p)}")
+                                                cat_str = ", ".join(r.get(col_cat, [])) if isinstance(r.get(col_cat, ''), list) else r.get(col_cat, '')
+                                                rutas_resumidas.append(f"Día:{r.get(col_dia,'')} | Mov:{r.get(col_mov,'')} | Cat:{cat_str} | Sal:{r.get(col_h_salida,'')} | Ret:{r.get(col_h_retorno,'')} | Ruta:{'->'.join(p)}")
 
                                         txt_rutas = "\n".join(rutas_resumidas)
                                         jornadas_txt = "\n".join([f"Día:{r['Día']} | Mov:{r['Movilidad']} | Ent:{r['Ingreso']} | Sal:{r['Salida']}" for _, r in df_movilidades_raw.iterrows() if r['Ingreso'] != ''])
