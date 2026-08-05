@@ -1053,3 +1053,12 @@ if datos_cargados:
                     st.error("❌ PIN incorrecto. Ingrese el PIN de autorización para acceder al Asistente e IA.")
             else:
                 st.info("🔒 Ingrese el PIN de 4 dígitos para habilitar las funciones del Asistente Inteligente.")
+
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
